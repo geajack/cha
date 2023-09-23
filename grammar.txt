@@ -1,0 +1,22 @@
+program = statement*
+
+statement =
+    setStatement
+    | ifStatement
+    | printStatement
+    | codeBlock
+    | hostStatement
+
+codeBlock = "{" program "}" NEWLINE?
+
+setStatement = "set" identifier "=" expression NEWLINE
+
+ifStatement = "if" expression NEWLINE? statement
+
+printStatement = "print" expression NEWLINE
+
+expression = IDENTIFIER | STRING
+
+hostStatement = RAWSTRING hostArgument* NEWLINE
+
+hostArgument = RAWSTRING | "$" IDENTIFIER | STRING

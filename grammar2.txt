@@ -1,0 +1,5 @@
+file = (string "\n")* string EOF
+
+string = line "\n" " "* "..." string
+
+line = [^\n]*
