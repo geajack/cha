@@ -79,7 +79,7 @@ int parser_consume_statement(Parser *parser)
     {
         if(streq(lexer->token.text, "print"))
         {
-            lexer_next_token(parser->lexer);
+            lexer_next_token(parser->lexer, 0);
 
             // print statement
             Value *value = parser_consume_expression(parser);
@@ -94,20 +94,16 @@ int parser_consume_statement(Parser *parser)
             printf("Executing host program %s with arguments: ", program_name);
 
             // arguments
-            lexer_next_token(parser->lexer);
+            lexer_next_token(parser->lexer, 1);
             int token_type = lexer->token.type;
-            while (token_type == TOKEN_TYPE_NAME || token_type == TOKEN_TYPE_STRING)
+            while (token_type == TOKEN_TYPE_RAW_TEXT)
             {
                 // argument
-                if (token_type == TOKEN_TYPE_NAME)
+                if (token_type == TOKEN_TYPE_RAW_TEXT)
                 {
                     printf("%s ", lexer->token.text);
                 }
-                else if (token_type == TOKEN_TYPE_STRING)
-                {
-                    printf("%s ", lexer->token.text);
-                }
-                lexer_next_token(lexer);
+                lexer_next_token(lexer, 1);
                 token_type = lexer->token.type;
             }
             printf("\n");
@@ -129,14 +125,14 @@ int parser_consume_statement(Parser *parser)
 void parser_parse(Parser *parser, Lexer *lexer)
 {
     parser->lexer = lexer;
-    lexer_next_token(lexer); // prime lexer
+    lexer_next_token(lexer, 0); // prime lexer
     while (parser_consume_statement(parser))
     {
-        lexer_next_token(parser->lexer);
+        lexer_next_token(parser->lexer, 0);
         int token_type = parser->lexer->token.type;
         if (token_type == TOKEN_TYPE_NEWLINE)
         {
-            lexer_next_token(parser->lexer);
+            lexer_next_token(parser->lexer, 0);
         }
         else if (token_type == TOKEN_TYPE_EOF)
         {
@@ -156,7 +152,9 @@ int main()
     char *input =
         "print \"hello\"\n"
         "print \"message\"\n"
-        "ffmpeg -i audio.mp3 converted.ogg";
+        "ffmpeg\n"
+        "... -i audio.mp3\n"
+        "... converted.ogg";
 
     Lexer lexer;
     lexer_init(&lexer, input, strlen(input));

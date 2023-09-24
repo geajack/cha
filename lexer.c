@@ -33,7 +33,8 @@ const int LEXER_STATE_NONINITIAL  = 1;
 const int TOKEN_TYPE_NAME = 0;
 const int TOKEN_TYPE_STRING = 1;
 const int TOKEN_TYPE_NEWLINE = 2;
-const int TOKEN_TYPE_EOF = 3;
+const int TOKEN_TYPE_RAW_TEXT = 3;
+const int TOKEN_TYPE_EOF = 4;
 
 void lexer_init(Lexer *lexer, char *file_contents, int length)
 {
@@ -70,12 +71,13 @@ int lexer_match(Lexer *lexer, const char *string)
     return 1;
 }
 
-int lexer_next_token(Lexer *lexer)
+int lexer_next_token(Lexer *lexer, int shell_mode)
 {
+    Token *token = &lexer->token;
     while (1)
     {
         LexerChar c = lexer_peek(lexer);
-
+        
         if (c == '\'' || c == '"')
         {
             // consume strings
@@ -83,8 +85,8 @@ int lexer_next_token(Lexer *lexer)
             int escaped = 0;
             int string_index = 0;
 
-            lexer->token.type = TOKEN_TYPE_STRING;
-            lexer->token.i0 = lexer->index;
+            token->type = TOKEN_TYPE_STRING;
+            token->i0 = lexer->index;
 
             lexer_consume(lexer);
 
@@ -104,17 +106,17 @@ int lexer_next_token(Lexer *lexer)
                     if (c == 'n')
                     {
                         // append newline
-                        lexer->token.text[string_index++] = '\n';
+                        token->text[string_index++] = '\n';
                     }
                     else if (c == '\'' || c == '"')
                     {
                         // append c
-                        lexer->token.text[string_index++] = c;
+                        token->text[string_index++] = c;
                     }
                     else if (c == '\\')
                     {
                         // append backslash
-                        lexer->token.text[string_index++] = '\\';
+                        token->text[string_index++] = '\\';
                     }
                     else
                     {
@@ -133,14 +135,14 @@ int lexer_next_token(Lexer *lexer)
                     else if (c == quotemark)
                     {
                         // end
-                        lexer->token.text[string_index]  = 0;
-                        lexer->token.i1 = lexer->index - 1;
+                        token->text[string_index]  = 0;
+                        token->i1 = lexer->index - 1;
                         return 1;
                     }
                     else
                     {
                         // append
-                        lexer->token.text[string_index++] = c;
+                        token->text[string_index++] = c;
                     }
                 }
             }
@@ -180,11 +182,11 @@ int lexer_next_token(Lexer *lexer)
                 if (backtrack)
                 {
                     lexer->index = checkpoint;
-                    lexer->token.type = TOKEN_TYPE_NEWLINE;
-                    lexer->token.text[0] = '\n';
-                    lexer->token.text[1] = 0;
-                    lexer->token.i0 = checkpoint - 1;
-                    lexer->token.i1 = checkpoint;
+                    token->type = TOKEN_TYPE_NEWLINE;
+                    token->text[0] = '\n';
+                    token->text[1] = 0;
+                    token->i0 = checkpoint - 1;
+                    token->i1 = checkpoint;
                     return 1;
                 }
             }
@@ -195,31 +197,60 @@ int lexer_next_token(Lexer *lexer)
         }
         else if (c == LexerEOF)
         {
-            lexer->token.type = TOKEN_TYPE_EOF;
-            lexer->token.i0 = lexer->index;
-            lexer->token.i1 = lexer->index;
+            token->type = TOKEN_TYPE_EOF;
             return 0;
+        }
+        else if (!shell_mode)
+        {
+            if (c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))
+            {
+                // consume name
+                char *name_buffer = token->text;
+                token->type = TOKEN_TYPE_NAME;
+                token->i0 = lexer->index;
+                int name_index = 0;
+                while (1)
+                {
+                    LexerChar c = lexer_peek(lexer);
+
+                    if (c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
+                    {
+                        name_buffer[name_index++] = c;
+                        lexer_consume(lexer);
+                    }
+                    else
+                    {
+                        name_buffer[name_index] = 0;
+                        token->i1 = lexer->index;
+                        return 1;
+                    }
+                }
+            }
+            else
+            {
+                printf("Lexer error %d (lexer.c:%d)\n", c, __LINE__);
+                return 0;
+            }
         }
         else
         {
-            // consume name
-            char *name_buffer = lexer->token.text;
-            lexer->token.type = TOKEN_TYPE_NAME;
-            lexer->token.i0 = lexer->index;
+            // consume raw text
+            char *buffer = token->text;
+            token->type = TOKEN_TYPE_RAW_TEXT;
+            token->i0 = lexer->index;
             int name_index = 0;
             while (1)
             {
-                LexerChar c = lexer_peek(lexer);                
-
-                if (c == ' ' || c == '\n' || c == '\t' || c == LexerEOF)
+                LexerChar c = lexer_peek(lexer);
+                if (c == ' ' || c == '\n' || c == LexerEOF)
                 {
-                    name_buffer[name_index] = 0;
-                    lexer->token.i1 = lexer->index;
+                    buffer[name_index] = 0;
+                    token->i1 = lexer->index;
                     return 1;
                 }
                 else
                 {
-                    name_buffer[name_index++] = c;
+                    buffer[name_index++] = c;
                     lexer_consume(lexer);
                 }
             }
