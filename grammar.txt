@@ -20,3 +20,11 @@ expression = IDENTIFIER | STRING
 hostStatement = RAWSTRING hostArgument* NEWLINE
 
 hostArgument = RAWSTRING | "$" IDENTIFIER | STRING
+
+---
+
+Tokens:
+
+- string
+- identifier
+- newline

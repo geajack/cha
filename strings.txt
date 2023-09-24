@@ -1,2 +1,2 @@
 print "hello world"
-print message 
+... print message
