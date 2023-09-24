@@ -26,6 +26,7 @@ struct Symbol
 typedef struct Symbol Symbol;
 
 Symbol symbol_table[64];
+int n_symbols = 0;
 
 struct Parser
 {
@@ -37,6 +38,13 @@ typedef struct Parser Parser;
 Value *lookup_symbol(char *name)
 {
     return 0;
+}
+
+void push_symbol(char *name, Value *value)
+{
+    symbol_table[n_symbols].name = name;
+    symbol_table[n_symbols].value = value;
+    n_symbols += 1;
 }
 
 char *save_string_to_heap(char *string)
@@ -75,7 +83,7 @@ int parser_consume_statement(Parser *parser)
 {
     Lexer *lexer = parser->lexer;
 
-    if (lexer->token.type == TOKEN_TYPE_NAME)
+    if (lexer->token.type == TOKEN_TYPE_RAW_TEXT)
     {
         if(streq(lexer->token.text, "print"))
         {
@@ -101,7 +109,7 @@ int parser_consume_statement(Parser *parser)
                 // argument
                 if (token_type == TOKEN_TYPE_RAW_TEXT)
                 {
-                    printf("%s ", lexer->token.text);
+                    printf("[%s] ", lexer->token.text);
                 }
                 lexer_next_token(lexer, 1);
                 token_type = lexer->token.type;
@@ -125,14 +133,14 @@ int parser_consume_statement(Parser *parser)
 void parser_parse(Parser *parser, Lexer *lexer)
 {
     parser->lexer = lexer;
-    lexer_next_token(lexer, 0); // prime lexer
+    lexer_next_token(lexer, 1); // prime lexer
     while (parser_consume_statement(parser))
     {
-        lexer_next_token(parser->lexer, 0);
+        lexer_next_token(parser->lexer, 1);
         int token_type = parser->lexer->token.type;
         if (token_type == TOKEN_TYPE_NEWLINE)
         {
-            lexer_next_token(parser->lexer, 0);
+            lexer_next_token(parser->lexer, 1);
         }
         else if (token_type == TOKEN_TYPE_EOF)
         {
@@ -152,7 +160,7 @@ int main()
     char *input =
         "print \"hello\"\n"
         "print \"message\"\n"
-        "ffmpeg\n"
+        "./ffmpeg\n"
         "... -i audio.mp3\n"
         "... converted.ogg";
 
