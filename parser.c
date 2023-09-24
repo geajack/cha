@@ -63,6 +63,10 @@ Value *parser_consume_expression(Parser *parser)
     if (parser->lexer->token.type == TOKEN_TYPE_NAME)
     {
         Value *value = lookup_symbol(parser->lexer->token.text);
+        if (value == 0)
+        {
+            printf("ERROR: Undefined symbol \"%s\" (parser.c:%d)\n", parser->lexer->token.text, __LINE__);
+        }
         return value;
     }
     else if (parser->lexer->token.type == TOKEN_TYPE_STRING)
@@ -91,6 +95,11 @@ int parser_consume_statement(Parser *parser)
 
             // print statement
             Value *value = parser_consume_expression(parser);
+            if (value == 0)
+            {
+                return 0;
+            }
+
             printf("%s\n", value->string_value);
         }
         else
@@ -159,7 +168,7 @@ int main()
 {
     char *input =
         "print \"hello\"\n"
-        "print \"message\"\n"
+        "print message\n"
         "./ffmpeg\n"
         "... -i audio.mp3\n"
         "... converted.ogg";
