@@ -37,6 +37,13 @@ typedef struct Parser Parser;
 
 Value *lookup_symbol(char *name)
 {
+    for (int i = 0; i < n_symbols; i++)
+    {
+        if (streq(symbol_table[i].name, name))
+        {
+            return symbol_table[i].value;
+        }
+    }
     return 0;
 }
 
@@ -79,6 +86,7 @@ Value *parser_consume_expression(Parser *parser)
     else
     {
         // error
+        printf("ERROR: Could not evaluate expression (parser.c:%d)\n", __LINE__);
         return 0;
     }
 }
@@ -101,6 +109,36 @@ int parser_consume_statement(Parser *parser)
             }
 
             printf("%s\n", value->string_value);
+        }
+        else if (streq(lexer->token.text, "set"))
+        {
+            lexer_next_token(parser->lexer, 0);
+
+            if (parser->lexer->token.type != TOKEN_TYPE_NAME)
+            {
+                printf("PARSE ERROR: Expected name (parser.c:%d)\n", __LINE__);
+                return 0;
+            }
+
+            char *name = save_string_to_heap(parser->lexer->token.text);
+
+            lexer_next_token(parser->lexer, 0);
+
+            if (parser->lexer->token.type != TOKEN_TYPE_OPASSIGN)
+            {
+                printf("PARSE ERROR: Expected '=' (parser.c:%d)\n", __LINE__);
+                return 0;
+            }
+            
+            lexer_next_token(parser->lexer, 0);
+
+            Value *value = parser_consume_expression(parser);
+            if (value == 0)
+            {
+                return 0;
+            }
+
+            push_symbol(name, value);
         }
         else
         {
@@ -167,6 +205,7 @@ void parser_parse(Parser *parser, Lexer *lexer)
 int main()
 {
     char *input =
+        "set message = \"hello world\"\n"
         "print \"hello\"\n"
         "print message\n"
         "./ffmpeg\n"

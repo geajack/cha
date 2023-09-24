@@ -30,11 +30,17 @@ typedef struct Lexer Lexer;
 const int LEXER_STATE_INITIAL = 0;
 const int LEXER_STATE_NONINITIAL  = 1;
 
-const int TOKEN_TYPE_NAME = 0;
-const int TOKEN_TYPE_STRING = 1;
-const int TOKEN_TYPE_NEWLINE = 2;
-const int TOKEN_TYPE_RAW_TEXT = 3;
-const int TOKEN_TYPE_EOF = 4;
+enum TokenType
+{
+    TOKEN_TYPE_NAME,
+    TOKEN_TYPE_STRING,
+    TOKEN_TYPE_NEWLINE,
+    TOKEN_TYPE_RAW_TEXT,
+    
+    TOKEN_TYPE_OPASSIGN,
+    
+    TOKEN_TYPE_EOF
+};
 
 void lexer_init(Lexer *lexer, char *file_contents, int length)
 {
@@ -225,6 +231,12 @@ int lexer_next_token(Lexer *lexer, int shell_mode)
                         return 1;
                     }
                 }
+            }
+            else if (c == '=')
+            {
+                token->type = TOKEN_TYPE_OPASSIGN;
+                lexer_consume(lexer);
+                return 1;
             }
             else
             {
