@@ -15,11 +15,11 @@ ifStatement = "if" expression NEWLINE? statement
 
 printStatement = "print" expression NEWLINE
 
-expression = IDENTIFIER | STRING
+expression = NAME | STRING
 
-hostStatement = RAWSTRING hostArgument* NEWLINE
+hostStatement = NAME hostArgument* NEWLINE
 
-hostArgument = RAWSTRING | "$" IDENTIFIER | STRING
+hostArgument = NAME | "$" NAME | STRING
 
 ---
 

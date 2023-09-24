@@ -5,11 +5,21 @@
 typedef int LexerChar;
 const LexerChar LexerEOF = -1;
 
+struct Token
+{
+    int type;
+    char text[256];
+    int i0, i1;
+};
+
+typedef struct Token Token;
+
 struct Lexer
 {
     const char *input;
     int index;
     int input_length;
+    Token token;
 
     // state
     int state;
@@ -20,18 +30,10 @@ typedef struct Lexer Lexer;
 const int LEXER_STATE_INITIAL = 0;
 const int LEXER_STATE_NONINITIAL  = 1;
 
-struct Token
-{
-    int type;
-    char text[256];
-    int i0, i1;
-};
-
-typedef struct Token Token;
-
 const int TOKEN_TYPE_NAME = 0;
 const int TOKEN_TYPE_STRING = 1;
 const int TOKEN_TYPE_NEWLINE = 2;
+const int TOKEN_TYPE_EOF = 3;
 
 void lexer_init(Lexer *lexer, char *file_contents, int length)
 {
@@ -68,45 +70,21 @@ int lexer_match(Lexer *lexer, const char *string)
     return 1;
 }
 
-int lexer_next_token(Lexer *lexer, Token *token)
+int lexer_next_token(Lexer *lexer)
 {
     while (1)
     {
         LexerChar c = lexer_peek(lexer);
 
-        if (c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))
-        {
-            // consume name
-            char *name_buffer = token->text;
-            token->type = TOKEN_TYPE_NAME;
-            token->i0 = lexer->index;
-            int name_index = 0;
-            while (1)
-            {
-                LexerChar c = lexer_peek(lexer);
-
-                if (c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
-                {
-                    name_buffer[name_index++] = c;
-                    lexer_consume(lexer);
-                }
-                else
-                {
-                    name_buffer[name_index] = 0;
-                    token->i1 = lexer->index;
-                    return 1;
-                }
-            }
-        }
-        else if (c == '\'' || c == '"')
+        if (c == '\'' || c == '"')
         {
             // consume strings
             char quotemark = c;
             int escaped = 0;
             int string_index = 0;
 
-            token->type = TOKEN_TYPE_STRING;
-            token->i0 = lexer->index;
+            lexer->token.type = TOKEN_TYPE_STRING;
+            lexer->token.i0 = lexer->index;
 
             lexer_consume(lexer);
 
@@ -126,17 +104,17 @@ int lexer_next_token(Lexer *lexer, Token *token)
                     if (c == 'n')
                     {
                         // append newline
-                        token->text[string_index++] = '\n';
+                        lexer->token.text[string_index++] = '\n';
                     }
                     else if (c == '\'' || c == '"')
                     {
                         // append c
-                        token->text[string_index++] = c;
+                        lexer->token.text[string_index++] = c;
                     }
                     else if (c == '\\')
                     {
                         // append backslash
-                        token->text[string_index++] = '\\';
+                        lexer->token.text[string_index++] = '\\';
                     }
                     else
                     {
@@ -155,14 +133,14 @@ int lexer_next_token(Lexer *lexer, Token *token)
                     else if (c == quotemark)
                     {
                         // end
-                        token->text[string_index]  = 0;
-                        token->i1 = lexer->index - 1;
+                        lexer->token.text[string_index]  = 0;
+                        lexer->token.i1 = lexer->index - 1;
                         return 1;
                     }
                     else
                     {
                         // append
-                        token->text[string_index++] = c;
+                        lexer->token.text[string_index++] = c;
                     }
                 }
             }
@@ -202,11 +180,11 @@ int lexer_next_token(Lexer *lexer, Token *token)
                 if (backtrack)
                 {
                     lexer->index = checkpoint;
-                    token->type = TOKEN_TYPE_NEWLINE;
-                    token->text[0] = '\n';
-                    token->text[1] = 0;
-                    token->i0 = checkpoint - 1;
-                    token->i1 = checkpoint;
+                    lexer->token.type = TOKEN_TYPE_NEWLINE;
+                    lexer->token.text[0] = '\n';
+                    lexer->token.text[1] = 0;
+                    lexer->token.i0 = checkpoint - 1;
+                    lexer->token.i1 = checkpoint;
                     return 1;
                 }
             }
@@ -217,42 +195,63 @@ int lexer_next_token(Lexer *lexer, Token *token)
         }
         else if (c == LexerEOF)
         {
+            lexer->token.type = TOKEN_TYPE_EOF;
+            lexer->token.i0 = lexer->index;
+            lexer->token.i1 = lexer->index;
             return 0;
         }
         else
         {
-            // illegal
-            printf("Lexer error %d (lexer.c:%d)\n", c, __LINE__);
-            return 0;
+            // consume name
+            char *name_buffer = lexer->token.text;
+            lexer->token.type = TOKEN_TYPE_NAME;
+            lexer->token.i0 = lexer->index;
+            int name_index = 0;
+            while (1)
+            {
+                LexerChar c = lexer_peek(lexer);                
+
+                if (c == ' ' || c == '\n' || c == '\t' || c == LexerEOF)
+                {
+                    name_buffer[name_index] = 0;
+                    lexer->token.i1 = lexer->index;
+                    return 1;
+                }
+                else
+                {
+                    name_buffer[name_index++] = c;
+                    lexer_consume(lexer);
+                }
+            }
         }
     }
 }
 
-int c_main()
-{
-    char *input =
-        "print message\n"
-        "     ... print \"hel\\\"lo\"";
+// int c_main()
+// {
+//     char *input =
+//         "print message\n"
+//         "     ... print \"hel\\\"lo\"";
 
-    Lexer lexer;
-    lexer_init(&lexer, input, strlen(input));
+//     Lexer lexer;
+//     lexer_init(&lexer, input, strlen(input));
 
-    Token token;
-    while (lexer_next_token(&lexer, &token))
-    {
-        if (token.type == TOKEN_TYPE_NAME)
-        {
-            printf("name: %s\n", token.text);
-        }
-        else if (token.type == TOKEN_TYPE_NEWLINE)
-        {
-            printf("newline\n");
-        }
-        else if (token.type == TOKEN_TYPE_STRING)
-        {
-            printf("string: %s\n", token.text);
-        }
-    }
+//     Token token;
+//     while (lexer_next_token(&lexer, &token))
+//     {
+//         if (token.type == TOKEN_TYPE_NAME)
+//         {
+//             printf("name: %s\n", token.text);
+//         }
+//         else if (token.type == TOKEN_TYPE_NEWLINE)
+//         {
+//             printf("newline\n");
+//         }
+//         else if (token.type == TOKEN_TYPE_STRING)
+//         {
+//             printf("string: %s\n", token.text);
+//         }
+//     }
 
-    return 0;
-}
+//     return 0;
+// }
