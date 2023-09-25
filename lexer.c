@@ -188,7 +188,6 @@ int lexer_next_token(Lexer *lexer, int shell_mode)
                 else
                 {
                     backtrack = 1;
-                    
                 }
 
                 if (backtrack)

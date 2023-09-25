@@ -62,11 +62,97 @@ char *save_string_to_heap(char *string)
     return memory;
 }
 
+Value *interpreter_apply_operator(int op, Value *left, Value *right)
+{
+    return left;
+}
+
 void parser_init(Parser *parser)
 {}
 
-Value *parser_consume_expression(Parser *parser)
+Value dummy = { .type = 0, .string_value = "dummy" };
+
+Value *parser_consume_expression(Parser *parser, int parent_operator)
 {
+    Value *total = 0;
+    int expecting_op = 0;
+
+    while (1)
+    {
+        int token_type = parser->lexer->token.type;
+        if (!expecting_op)
+        {
+            if (token_type == TOKEN_TYPE_NAME)
+            {
+                lexer_next_token(parser->lexer, 0);
+                total = &dummy;
+                expecting_op = 1;
+            }
+            else if (token_type == TOKEN_TYPE_STRING)
+            {
+                lexer_next_token(parser->lexer, 0);
+                total = &dummy;
+                expecting_op = 1;
+            }
+            else if (token_type == TOKEN_TYPE_NUMBER)
+            {
+                lexer_next_token(parser->lexer, 0);
+                total = &dummy;
+                expecting_op = 1;
+            }
+            else if (token_type == TOKEN_TYPE_PARENOPEN)
+            {
+                lexer_next_token(parser->lexer, 0); // consume paren
+                Value *inner_value = parser_consume_expression(parser, TOKEN_TYPE_OPADD);
+                if (parser->lexer->token.type != TOKEN_TYPE_PARENCLOSE)
+                {
+                    printf("PARSE ERROR: Expected right parenthesis (parser.c:%d)\n", __LINE__);
+                    return 0;
+                }
+                lexer_next_token(parser->lexer, 0); // consume close paren
+                total = inner_value;
+                expecting_op = 1;
+            }
+            else
+            {
+                printf("PARSE ERROR: Unexpected token (parser.c:%d)\n", __LINE__);
+                return 0;
+            }
+        }
+        else
+        {
+            if (token_type == TOKEN_TYPE_OPADD)
+            {
+                if (parent_operator == TOKEN_TYPE_OPMULTIPLY)
+                {
+                    // stop
+                    // the peek token at this point will be the + operator, so the caller better be
+                    // ready to handle an operator as the next token
+                    return total;
+                }
+                else
+                {
+                    lexer_next_token(parser->lexer, 0); // consume +
+                    Value *rhs = parser_consume_expression(parser, TOKEN_TYPE_OPADD);
+                    total = interpreter_apply_operator(token_type, total, rhs);
+                    expecting_op = 1;
+                }
+            }
+            else if (token_type == TOKEN_TYPE_OPMULTIPLY)
+            {
+                lexer_next_token(parser->lexer, 0); // consume +
+                Value *rhs = parser_consume_expression(parser, TOKEN_TYPE_OPMULTIPLY);
+                total = interpreter_apply_operator(token_type, total, rhs);
+                expecting_op = 1;
+            }
+            else
+            {
+                // end of expression, I guess
+                return total;
+            }
+        }
+    }
+
     return 0;
 }
 
@@ -81,7 +167,7 @@ int parser_consume_statement(Parser *parser)
             lexer_next_token(parser->lexer, 0);
 
             // print statement
-            Value *value = parser_consume_expression(parser);
+            Value *value = parser_consume_expression(parser, TOKEN_TYPE_OPADD);
             if (value == 0)
             {
                 printf("PARSE ERROR: Could not evaluate expression (parser.c:%d)\n", __LINE__);
@@ -112,7 +198,7 @@ int parser_consume_statement(Parser *parser)
             
             lexer_next_token(parser->lexer, 0);
 
-            Value *value = parser_consume_expression(parser);
+            Value *value = parser_consume_expression(parser, TOKEN_TYPE_OPADD);
             if (value == 0)
             {
                 printf("PARSE ERROR: Could not evaluate expression (parser.c:%d)\n", __LINE__);
