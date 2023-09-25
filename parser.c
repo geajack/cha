@@ -9,9 +9,15 @@ int streq(const char *a, const char *b)
     return strcmp(a, b) == 0;
 }
 
+enum ValueType
+{
+    VALUE_TYPE_STRING,
+    VALUE_TYPE_NUMBER
+};
+
 struct Value
 {
-    int type;
+    enum ValueType type;
     char *string_value;
 };
 
@@ -64,13 +70,19 @@ char *save_string_to_heap(char *string)
 
 Value *interpreter_apply_operator(int op, Value *left, Value *right)
 {
-    return left;
+    char *buffer = malloc(1024);
+    char opchar = op == TOKEN_TYPE_OPADD ? '+' : '*';
+    sprintf(buffer, "(%s %c %s)", left->string_value, opchar, right->string_value);
+    Value *result = malloc(sizeof(Value));
+    result->type = VALUE_TYPE_STRING;
+    result->string_value = buffer;
+    return result;
 }
 
 void parser_init(Parser *parser)
 {}
 
-Value dummy = { .type = 0, .string_value = "dummy" };
+Value dummy = { .type = VALUE_TYPE_STRING, .string_value = "dummy" };
 
 Value *parser_consume_expression(Parser *parser, int parent_operator)
 {
@@ -84,21 +96,25 @@ Value *parser_consume_expression(Parser *parser, int parent_operator)
         {
             if (token_type == TOKEN_TYPE_NAME)
             {
-                lexer_next_token(parser->lexer, 0);
-                total = &dummy;
+                total = lookup_symbol(parser->lexer->token.text);
                 expecting_op = 1;
+                lexer_next_token(parser->lexer, 0);
             }
             else if (token_type == TOKEN_TYPE_STRING)
             {
-                lexer_next_token(parser->lexer, 0);
-                total = &dummy;
+                total = malloc(sizeof(Value));
+                total->type = VALUE_TYPE_STRING;
+                total->string_value = save_string_to_heap(parser->lexer->token.text);
                 expecting_op = 1;
+                lexer_next_token(parser->lexer, 0);
             }
             else if (token_type == TOKEN_TYPE_NUMBER)
             {
-                lexer_next_token(parser->lexer, 0);
-                total = &dummy;
+                total = malloc(sizeof(Value));
+                total->type = VALUE_TYPE_STRING;
+                total->string_value = save_string_to_heap(parser->lexer->token.text);
                 expecting_op = 1;
+                lexer_next_token(parser->lexer, 0);
             }
             else if (token_type == TOKEN_TYPE_PARENOPEN)
             {
@@ -346,10 +362,11 @@ void parser_print_tokens(Parser *parser, Lexer *lexer)
 int main(int argc, char **argv)
 {
     char *input =
-        "set value = 5 + 5 * 10\n"
+        "set value = 5 + 5 * 10 + 6\n"
         "set message = \"hello world\"\n"
         "print \"hello\"\n"
         "print message\n"
+        "print value\n"
         "./ffmpeg\n"
         "    ... -i audio.mp3\n"
         "    ... converted.ogg";
