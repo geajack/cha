@@ -34,10 +34,16 @@ enum TokenType
 {
     TOKEN_TYPE_NAME,
     TOKEN_TYPE_STRING,
+    TOKEN_TYPE_NUMBER,
     TOKEN_TYPE_NEWLINE,
     TOKEN_TYPE_RAW_TEXT,
     
     TOKEN_TYPE_OPASSIGN,
+    TOKEN_TYPE_OPADD,
+    TOKEN_TYPE_OPMULTIPLY,
+    
+    TOKEN_TYPE_PARENOPEN,
+    TOKEN_TYPE_PARENCLOSE,
     
     TOKEN_TYPE_EOF
 };
@@ -204,7 +210,7 @@ int lexer_next_token(Lexer *lexer, int shell_mode)
         else if (c == LexerEOF)
         {
             token->type = TOKEN_TYPE_EOF;
-            return 0;
+            return 1;
         }
         else if (!shell_mode)
         {
@@ -232,9 +238,57 @@ int lexer_next_token(Lexer *lexer, int shell_mode)
                     }
                 }
             }
+            if (c >= '0' && c <= '9')
+            {
+                // consume number
+                char *buffer = token->text;
+                token->type = TOKEN_TYPE_NUMBER;
+                token->i0 = lexer->index;
+                int index = 0;
+                while (1)
+                {
+                    LexerChar c = lexer_peek(lexer);
+
+                    if (c >= '0' && c <= '9')
+                    {
+                        buffer[index++] = c;
+                        lexer_consume(lexer);
+                    }
+                    else
+                    {
+                        buffer[index++] = 0;
+                        token->i1 = lexer->index;
+                        return 1;
+                    }
+                }
+            }
             else if (c == '=')
             {
                 token->type = TOKEN_TYPE_OPASSIGN;
+                lexer_consume(lexer);
+                return 1;
+            }
+            else if (c == '+')
+            {
+                token->type = TOKEN_TYPE_OPADD;
+                lexer_consume(lexer);
+                return 1;
+            }
+            else if (c == '*')
+            {
+                token->type = TOKEN_TYPE_OPMULTIPLY;
+                lexer_consume(lexer);
+                return 1;
+            }
+            else if (c == '(')
+            {
+                token->type = TOKEN_TYPE_PARENOPEN;
+                lexer_consume(lexer);
+                return 1;
+            }
+            else if (c == ')')
+            {
+                token->type = TOKEN_TYPE_PARENCLOSE;
                 lexer_consume(lexer);
                 return 1;
             }

@@ -67,28 +67,7 @@ void parser_init(Parser *parser)
 
 Value *parser_consume_expression(Parser *parser)
 {
-    if (parser->lexer->token.type == TOKEN_TYPE_NAME)
-    {
-        Value *value = lookup_symbol(parser->lexer->token.text);
-        if (value == 0)
-        {
-            printf("ERROR: Undefined symbol \"%s\" (parser.c:%d)\n", parser->lexer->token.text, __LINE__);
-        }
-        return value;
-    }
-    else if (parser->lexer->token.type == TOKEN_TYPE_STRING)
-    {
-        char *string_value = save_string_to_heap(parser->lexer->token.text);
-        Value *value = malloc(sizeof(Value));
-        value->string_value = string_value;
-        return value;
-    }
-    else
-    {
-        // error
-        printf("ERROR: Could not evaluate expression (parser.c:%d)\n", __LINE__);
-        return 0;
-    }
+    return 0;
 }
 
 int parser_consume_statement(Parser *parser)
@@ -105,6 +84,7 @@ int parser_consume_statement(Parser *parser)
             Value *value = parser_consume_expression(parser);
             if (value == 0)
             {
+                printf("PARSE ERROR: Could not evaluate expression (parser.c:%d)\n", __LINE__);
                 return 0;
             }
 
@@ -135,6 +115,7 @@ int parser_consume_statement(Parser *parser)
             Value *value = parser_consume_expression(parser);
             if (value == 0)
             {
+                printf("PARSE ERROR: Could not evaluate expression (parser.c:%d)\n", __LINE__);
                 return 0;
             }
 
@@ -166,14 +147,10 @@ int parser_consume_statement(Parser *parser)
         
         return 1;
     }
-    else if (lexer->token.type == TOKEN_TYPE_EOF)
-    {
-        return 0;
-    }
     else
     {
         // error
-        return 0;
+        return 1;
     }
 }
 
@@ -183,7 +160,6 @@ void parser_parse(Parser *parser, Lexer *lexer)
     lexer_next_token(lexer, 1); // prime lexer
     while (parser_consume_statement(parser))
     {
-        lexer_next_token(parser->lexer, 1);
         int token_type = parser->lexer->token.type;
         if (token_type == TOKEN_TYPE_NEWLINE)
         {
@@ -197,24 +173,110 @@ void parser_parse(Parser *parser, Lexer *lexer)
         else
         {
             // error
+            printf("PARSE ERROR: Unexpected token after end of statement (parser.c:%d)\n", __LINE__);
             return;
         }
     }
 }
 
-int main()
+void parser_print_tokens(Parser *parser, Lexer *lexer)
+{
+    parser->lexer = lexer;
+    int shell_mode = 1;
+    int is_first_token = 1;
+    while (1)
+    {
+        int has_tokens = lexer_next_token(parser->lexer, shell_mode);
+        if (!has_tokens) return;
+
+        int token_type = parser->lexer->token.type;
+        if (token_type == TOKEN_TYPE_RAW_TEXT)
+        {
+            if(streq(lexer->token.text, "print"))
+            {
+                shell_mode = 0;
+            }
+            else if (streq(lexer->token.text, "set"))
+            {
+                shell_mode = 0;
+            }
+            printf("<RAW %s> ", lexer->token.text);
+            is_first_token = 0;
+        }
+        else if (token_type == TOKEN_TYPE_NAME)
+        {
+            printf("<NAME %s> ", lexer->token.text);
+        }
+        else if (token_type == TOKEN_TYPE_NUMBER)
+        {
+            printf("<NUMBER %s> ", lexer->token.text);
+            
+        }
+        else if (token_type == TOKEN_TYPE_STRING)
+        {
+            printf("<STRING %s> ", lexer->token.text);
+        }
+        else if (token_type == TOKEN_TYPE_OPASSIGN)
+        {
+            printf("<OP => ");
+        }
+        else if (token_type == TOKEN_TYPE_OPADD)
+        {
+            printf("<OP +> ");
+        }
+        else if (token_type == TOKEN_TYPE_OPMULTIPLY)
+        {
+            printf("<OP *> ");
+        }
+        else if (token_type == TOKEN_TYPE_PARENOPEN)
+        {
+            printf("<PARENOPEN> ");
+        }
+        else if (token_type == TOKEN_TYPE_PARENCLOSE)
+        {
+            printf("<PARENCLOSE> ");
+        }
+        else if (token_type == TOKEN_TYPE_NEWLINE)
+        {
+            printf("<NEWLINE>\n");
+            shell_mode = 1;
+            is_first_token = 1;  
+        }
+        else if (token_type == TOKEN_TYPE_EOF)
+        {
+            // done
+            printf("<EOF>\n");
+            return;
+        }
+        else
+        {
+            // error
+            printf("PARSE ERROR: Unexpected token after end of statement (parser.c:%d)\n", __LINE__);
+            return;
+        }
+    }
+}
+
+int main(int argc, char **argv)
 {
     char *input =
+        "set value = 5 + 5 * 10\n"
         "set message = \"hello world\"\n"
         "print \"hello\"\n"
         "print message\n"
         "./ffmpeg\n"
-        "... -i audio.mp3\n"
-        "... converted.ogg";
+        "    ... -i audio.mp3\n"
+        "    ... converted.ogg";
 
     Lexer lexer;
     lexer_init(&lexer, input, strlen(input));
 
+    int parse = 1;
+    if (argc > 1 && argv[1][0] == 't') parse = 0;
+
     Parser parser;
-    parser_parse(&parser, &lexer);
+    if (parse)
+        parser_parse(&parser, &lexer);
+    else
+        parser_print_tokens(&parser, &lexer);
 }

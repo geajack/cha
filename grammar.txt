@@ -15,11 +15,13 @@ ifStatement = "if" expression NEWLINE? statement
 
 printStatement = "print" expression NEWLINE
 
-expression = NAME | STRING
+expression = NAME | STRING | NUMBER | expression "+" expression | "(" expression ")"
 
 hostStatement = NAME hostArgument* NEWLINE
 
 hostArgument = NAME | "$" NAME | STRING
+
+5 + 9 + 7 * 8
 
 ---
 
