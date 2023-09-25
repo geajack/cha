@@ -97,6 +97,12 @@ Value *parser_consume_expression(Parser *parser, int parent_operator)
             if (token_type == TOKEN_TYPE_NAME)
             {
                 total = lookup_symbol(parser->lexer->token.text);
+                if (total == 0)
+                {
+                    printf("PARSE ERROR: Undefined symbol (parser.c:%d)\n", __LINE__);
+                    return 0;
+                }
+
                 expecting_op = 1;
                 lexer_next_token(parser->lexer, 0);
             }
@@ -151,6 +157,12 @@ Value *parser_consume_expression(Parser *parser, int parent_operator)
                     lexer_next_token(parser->lexer, 0); // consume +
                     Value *rhs = parser_consume_expression(parser, TOKEN_TYPE_OPADD);
                     total = interpreter_apply_operator(token_type, total, rhs);
+                    if (total == 0)
+                    {
+                        printf("PARSE ERROR: Could not compute (parser.c:%d)\n", __LINE__);
+                        return 0;
+                    }
+
                     expecting_op = 1;
                 }
             }
@@ -159,6 +171,12 @@ Value *parser_consume_expression(Parser *parser, int parent_operator)
                 lexer_next_token(parser->lexer, 0); // consume +
                 Value *rhs = parser_consume_expression(parser, TOKEN_TYPE_OPMULTIPLY);
                 total = interpreter_apply_operator(token_type, total, rhs);
+                if (total == 0)
+                {
+                    printf("PARSE ERROR: Could not compute (parser.c:%d)\n", __LINE__);
+                    return 0;
+                }
+
                 expecting_op = 1;
             }
             else
