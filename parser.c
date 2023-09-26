@@ -326,7 +326,7 @@ void parser_consume_statement(Parser *parser, int do_execute)
 
             // notice that this works whether the token is a name or a string
             char *program_name = save_string_to_heap(parser->lexer->token.text);
-            printf("Executing host program %s with arguments: ", program_name);
+            if (do_execute) printf("Executing host program %s with arguments: ", program_name);
 
             // arguments
             lexer_next_token(parser->lexer, 1);
@@ -356,14 +356,13 @@ void parser_parse(Parser *parser, Lexer *lexer)
     int depth = 0;
     int depth_at_which_to_resume_execution = 0;
     int execute = 1;
-    parser->failed_if_condition_flag = 1;
+    parser->failed_if_condition_flag = 0;
     parser->lexer = lexer;
     lexer_next_token(lexer, 1); // prime lexer
     while (1)
     {
         parser->error_flag = 0;        
         parser->if_flag = 0;
-        parser->failed_if_condition_flag = 0;
         parser->empty_flag = 0;
         parser_consume_statement(parser, execute);
 
@@ -420,6 +419,10 @@ void parser_parse(Parser *parser, Lexer *lexer)
         {
             // a statement ended mid-line and is followed by something else
             // - could be an if statement immediately followed by its body
+            //
+            // we will have interpreted the first token of this statement in language mode,
+            // which we don't want. Backtrack and re-tokenize it in shell mode.
+            lexer_backtrack_and_go_again(lexer, 1);
             continue;
         }
     }

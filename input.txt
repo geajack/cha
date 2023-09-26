@@ -1,13 +1,14 @@
-set value = 5 + 5 * 10 + 6
-set message = "hello world"
-
-print "hello"
-print message
-
-if 1 {
-    if 0 print value + 100
+if 0 {
+    ./gcc -o main main.c
+    print "if!"
 }
 
 ffmpeg
     ... -i audio.mp3
     ... converted.ogg
+
+set value = 5 + 5 * 10 + 6
+set message = "hello world"
+
+print "hello"
+print message
