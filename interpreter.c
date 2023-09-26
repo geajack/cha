@@ -122,7 +122,7 @@ void execute_host_program(char *program, char **arguments, int n_arguments)
 
 int is_truthy(Value *value)
 {
-    return 0;
+    return 1;
 }
 
 void interpret(ASTNode *root)
@@ -182,14 +182,14 @@ void interpret(ASTNode *root)
                 
         while (!next_statement)
         {
-            next_statement = statement->parent;
-            if (next_statement == root)
+            statement = statement->parent;
+            if (statement == root)
             {
                 done = 1;
                 break;
             }
 
-            next_statement = next_statement->next_sibling;
+            next_statement = statement->next_sibling;
         }
         statement = next_statement;
     }
@@ -204,8 +204,8 @@ int main()
     
     ASTNode *program = parse(input, input_length);
 
-    // interpret(program);
-    print_ast(program);
+    interpret(program);
+    // print_ast(program);
 
     return 0;
 }
