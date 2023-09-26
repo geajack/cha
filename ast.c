@@ -99,7 +99,7 @@ void print_ast_indented(ASTNode *tree, int indent)
         break;
 
         case RAW_TEXT_NODE:
-            printf("RAW_TEXT");
+            printf("RAW_TEXT [%s]", tree->string);
         break;
     }
 

@@ -213,6 +213,7 @@ ASTNode *parser_consume_statement(Parser *parser)
 
                 char *program = save_string_to_heap(text);
                 ASTNode *program_node = alloc_ast_node(RAW_TEXT_NODE, statement);
+                program_node->string = program;
                 statement->first_child = program_node;
 
                 // arguments
@@ -319,11 +320,14 @@ ASTNode *parse(char *input, int input_length)
 
             is_first_child = 1;
             only_one_child = 0;
+
+            lexer_next_shell_token(lexer);
         }
         else if (t == TOKEN_TYPE_CURLYCLOSE)
         {
             previous = previous->parent;
             is_first_child = 0;
+            lexer_next_shell_token(lexer);
         }
         else if (t == TOKEN_TYPE_EOF)
         {
