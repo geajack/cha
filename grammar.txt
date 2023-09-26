@@ -21,8 +21,6 @@ hostStatement = NAME hostArgument* NEWLINE
 
 hostArgument = NAME | "$" NAME | STRING
 
-5 + 9 + 7 * 8
-
 ---
 
 Tokens:

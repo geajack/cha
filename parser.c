@@ -359,12 +359,17 @@ void parser_print_tokens(Parser *parser, Lexer *lexer)
             if(streq(lexer->token.text, "print"))
             {
                 shell_mode = 0;
+                printf("<KEYW %s> ", lexer->token.text);
             }
             else if (streq(lexer->token.text, "set"))
             {
                 shell_mode = 0;
+                printf("<KEYW %s> ", lexer->token.text);
             }
-            printf("<RAW %s> ", lexer->token.text);
+            else
+            {
+                printf("<RAW %s> ", lexer->token.text);
+            }
             is_first_token = 0;
         }
         else if (token_type == TOKEN_TYPE_NAME)
@@ -428,7 +433,7 @@ int main(int argc, char **argv)
         "set message = \"hello world\"\n"
         "print \"hello\"\n"
         "print message\n"
-        "print value\n"
+        "print value + 100\n"
         "./ffmpeg\n"
         "    ... -i audio.mp3\n"
         "    ... converted.ogg";
