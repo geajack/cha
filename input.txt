@@ -1,16 +1,1 @@
-if 1 {
-    ./gcc -o main main.c
-    print "if!"
-    if 0 print "this doesn't print"
-    if 1 print "this does"
-}
-
-ffmpeg
-    ... -i audio.mp3
-    ... converted.ogg
-
-set value = 5 + 5 * 10 + 6
-set message = "hello world"
-
-print "hello"
-print message
+set value = (5 + 5) * 6

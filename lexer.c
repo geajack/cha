@@ -347,6 +347,16 @@ int lexer_next_token(Lexer *lexer, int shell_mode)
     }
 }
 
+int lexer_next_language_token(Lexer *lexer)
+{
+    return lexer_next_token(lexer, 0);
+}
+
+int lexer_next_shell_token(Lexer *lexer)
+{
+    return lexer_next_token(lexer, 1);
+}
+
 int lexer_backtrack_and_go_again(Lexer *lexer, int shell_mode)
 {
     lexer->index = lexer->checkpoint;
