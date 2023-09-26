@@ -331,13 +331,10 @@ void parser_consume_statement(Parser *parser, int do_execute)
             // arguments
             lexer_next_token(parser->lexer, 1);
             int token_type = lexer->token.type;
-            while (token_type == TOKEN_TYPE_RAW_TEXT)
+            while (token_type == TOKEN_TYPE_RAW_TEXT || token_type == TOKEN_TYPE_STRING)
             {
                 // argument
-                if (token_type == TOKEN_TYPE_RAW_TEXT)
-                {
-                    if (do_execute) printf("[%s] ", lexer->token.text);
-                }
+                if (do_execute) printf("[%s] ", lexer->token.text);
                 lexer_next_token(lexer, 1);
                 token_type = lexer->token.type;
             }
@@ -377,7 +374,7 @@ void parser_parse(Parser *parser, Lexer *lexer)
         {
             if (parser->failed_if_condition_flag)
             {
-                parser->failed_if_condition_flag = 1;
+                parser->failed_if_condition_flag = 0;
                 execute = 1;
             }
         }
