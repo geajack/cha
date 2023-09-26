@@ -462,22 +462,15 @@ void parser_print_tokens(Parser *parser, Lexer *lexer)
     }
 }
 
+char input[1024 * 1024];
+
 int main(int argc, char **argv)
 {
-    char *input =
-        "set value = 5 + 5 * 10 + 6\n"
-        "set message = \"hello world\"\n"
-        "print \"hello\"\n"
-        "print message\n"
-        "{\n"
-        "    print value + 100\n"
-        "}\n"
-        "./ffmpeg\n"
-        "    ... -i audio.mp3\n"
-        "    ... converted.ogg";
-
+    FILE *file = fopen("input.txt", "r");
+    int input_length = fread(input, 1, sizeof(input), file);
+        
     Lexer lexer;
-    lexer_init(&lexer, input, strlen(input));
+    lexer_init(&lexer, input, input_length);
 
     int parse = 1;
     if (argc > 1 && argv[1][0] == 't') parse = 0;

@@ -1,0 +1,13 @@
+set value = 5 + 5 * 10 + 6
+set message = "hello world"
+
+print "hello"
+print message
+
+{
+    print value + 100
+}
+
+./ffmpeg
+    ... -i audio.mp3
+    ... converted.ogg;
