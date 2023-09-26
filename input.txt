@@ -4,10 +4,10 @@ set message = "hello world"
 print "hello"
 print message
 
-{
-    print value + 100
+if 1 {
+    if 0 print value + 100
 }
 
-./ffmpeg
+ffmpeg
     ... -i audio.mp3
-    ... converted.ogg;
+    ... converted.ogg

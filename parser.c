@@ -41,6 +41,10 @@ int n_symbols = 0;
 struct Parser
 {
     Lexer *lexer;
+    int error_flag;
+    int if_flag;
+    int failed_if_condition_flag;
+    int empty_flag;
 };
 
 typedef struct Parser Parser;
@@ -227,7 +231,7 @@ Value *parser_consume_expression(Parser *parser, int parent_operator)
     return 0;
 }
 
-int parser_consume_statement(Parser *parser, int do_execute)
+void parser_consume_statement(Parser *parser, int do_execute)
 {
     Lexer *lexer = parser->lexer;
 
@@ -242,7 +246,8 @@ int parser_consume_statement(Parser *parser, int do_execute)
             if (value == 0)
             {
                 printf("PARSE ERROR: Could not evaluate expression (parser.c:%d)\n", __LINE__);
-                return 0;
+                parser->error_flag = 1;
+                return;
             }
 
             if (do_execute)
@@ -264,7 +269,8 @@ int parser_consume_statement(Parser *parser, int do_execute)
             if (parser->lexer->token.type != TOKEN_TYPE_NAME)
             {
                 printf("PARSE ERROR: Expected name (parser.c:%d)\n", __LINE__);
-                return 0;
+                parser->error_flag = 1;
+                return;
             }
 
             char *name = save_string_to_heap(parser->lexer->token.text);
@@ -274,7 +280,8 @@ int parser_consume_statement(Parser *parser, int do_execute)
             if (parser->lexer->token.type != TOKEN_TYPE_OPASSIGN)
             {
                 printf("PARSE ERROR: Expected '=' (parser.c:%d)\n", __LINE__);
-                return 0;
+                parser->error_flag = 1;
+                return;
             }
             
             lexer_next_token(parser->lexer, 0);
@@ -283,12 +290,34 @@ int parser_consume_statement(Parser *parser, int do_execute)
             if (value == 0)
             {
                 printf("PARSE ERROR: Could not evaluate expression (parser.c:%d)\n", __LINE__);
-                return 0;
+                parser->error_flag = 1;
+                return;
             }
 
             if (do_execute)
             {
                 push_symbol(name, value);
+            }
+        }
+        else if (streq(lexer->token.text, "if"))
+        {
+            parser->if_flag = 1;
+            lexer_next_token(parser->lexer, 0);
+            Value *value = parser_consume_expression(parser, TOKEN_TYPE_OPADD);
+            if (value == 0)
+            {
+                printf("PARSE ERROR: Could not evaluate expression (parser.c:%d)\n", __LINE__);
+                parser->error_flag = 1;
+                return;
+            }
+
+            if (do_execute)
+            {
+                if (value->type == VALUE_TYPE_NUMBER && value->integer_value == 0)
+                {
+                    parser->failed_if_condition_flag = 1;
+                    return;
+                }
             }
         }
         else
@@ -314,24 +343,46 @@ int parser_consume_statement(Parser *parser, int do_execute)
             }
             if (do_execute) printf("\n");
         }
-        
-        return 1;
     }
     else
     {
-        // error
-        return 1;
+        // don't recognize token, end of statement
+        return;
     }
 }
 
 void parser_parse(Parser *parser, Lexer *lexer)
 {
-    int execute_flag = 1;
     int depth = 0;
+    int depth_at_which_to_resume_execution = 0;
+    int execute = 1;
+    parser->failed_if_condition_flag = 1;
     parser->lexer = lexer;
     lexer_next_token(lexer, 1); // prime lexer
-    while (parser_consume_statement(parser, execute_flag))
+    while (1)
     {
+        parser->error_flag = 0;        
+        parser->if_flag = 0;
+        parser->failed_if_condition_flag = 0;
+        parser->empty_flag = 0;
+        parser_consume_statement(parser, execute);
+
+        if (parser->error_flag) return;
+
+        if (parser->failed_if_condition_flag == 1)
+        {
+            execute = 0;
+        }
+
+        if (parser->empty_flag == 0 && parser->if_flag == 0)
+        {
+            if (parser->failed_if_condition_flag)
+            {
+                parser->failed_if_condition_flag = 1;
+                execute = 1;
+            }
+        }
+
         int token_type = parser->lexer->token.type;
         if (token_type == TOKEN_TYPE_NEWLINE)
         {
@@ -339,6 +390,8 @@ void parser_parse(Parser *parser, Lexer *lexer)
         }
         else if (token_type == TOKEN_TYPE_CURLYOPEN)
         {
+            parser->failed_if_condition_flag = 0;
+            depth_at_which_to_resume_execution = depth;
             depth += 1;
             lexer_next_token(parser->lexer, 1);
         }
@@ -351,6 +404,11 @@ void parser_parse(Parser *parser, Lexer *lexer)
                 return;
             }
 
+            if (depth == depth_at_which_to_resume_execution)
+            {
+                execute = 1;
+            }
+
             lexer_next_token(parser->lexer, 1);
         }
         else if (token_type == TOKEN_TYPE_EOF)
@@ -360,9 +418,9 @@ void parser_parse(Parser *parser, Lexer *lexer)
         }
         else
         {
-            // error
-            printf("PARSE ERROR: Unexpected token after end of statement (parser.c:%d)\n", __LINE__);
-            return;
+            // a statement ended mid-line and is followed by something else
+            // - could be an if statement immediately followed by its body
+            continue;
         }
     }
 }
@@ -386,6 +444,11 @@ void parser_print_tokens(Parser *parser, Lexer *lexer)
                 printf("<KEYW %s> ", lexer->token.text);
             }
             else if (streq(lexer->token.text, "set"))
+            {
+                shell_mode = 0;
+                printf("<KEYW %s> ", lexer->token.text);
+            }
+            else if (streq(lexer->token.text, "if"))
             {
                 shell_mode = 0;
                 printf("<KEYW %s> ", lexer->token.text);
@@ -437,13 +500,13 @@ void parser_print_tokens(Parser *parser, Lexer *lexer)
         }
         else if (token_type == TOKEN_TYPE_CURLYOPEN)
         {
-            printf("<CURLYOPEN>\n");
+            printf("<CURLYOPEN> ");
             shell_mode = 1;
             is_first_token = 1;  
         }
         else if (token_type == TOKEN_TYPE_CURLYCLOSE)
         {
-            printf("<CURLYCLOSE>\n");
+            printf("<CURLYCLOSE> ");
             shell_mode = 1;
             is_first_token = 1;  
         }
