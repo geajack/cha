@@ -1,71 +1,11 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #include "lexer.c"
+#include "ast.c"
 
 int streq(const char *a, const char *b)
 {
     return strcmp(a, b) == 0;
-}
-
-enum ValueType
-{
-    VALUE_TYPE_STRING,
-    VALUE_TYPE_NUMBER
-};
-
-struct Value
-{
-    enum ValueType type;
-    union
-    {
-        char *string_value;
-        int integer_value;
-    };
-};
-
-typedef struct Value Value;
-
-struct Symbol
-{
-    char *name;
-    Value *value;
-};
-
-typedef struct Symbol Symbol;
-
-Symbol symbol_table[64];
-int n_symbols = 0;
-
-struct Parser
-{
-    Lexer *lexer;
-    int error_flag;
-    int if_flag;
-    int failed_if_condition_flag;
-    int empty_flag;
-};
-
-typedef struct Parser Parser;
-
-Value *lookup_symbol(char *name)
-{
-    for (int i = 0; i < n_symbols; i++)
-    {
-        if (streq(symbol_table[i].name, name))
-        {
-            return symbol_table[i].value;
-        }
-    }
-    return 0;
-}
-
-void push_symbol(char *name, Value *value)
-{
-    symbol_table[n_symbols].name = name;
-    symbol_table[n_symbols].value = value;
-    n_symbols += 1;
 }
 
 char *save_string_to_heap(char *string)
@@ -76,79 +16,65 @@ char *save_string_to_heap(char *string)
     return memory;
 }
 
-Value *interpreter_apply_operator(int op, Value *left, Value *right)
+struct ASTAttachmentPoint
 {
-    Value *result = malloc(sizeof(Value));
+    ASTNode **target;
+    ASTNode *parent;
+};
 
-    if (op == TOKEN_TYPE_OPADD)
-    {
-        if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
-        {
-            // add
-            result->type = VALUE_TYPE_NUMBER;
-            result->integer_value = left->integer_value + right->integer_value;
-        }
-        else
-        {
-            // concatenate
-        }
-    }
-    else if (op == TOKEN_TYPE_OPMULTIPLY)
-    {
-        if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
-        {
-            // add
-            result->type = VALUE_TYPE_NUMBER;
-            result->integer_value = left->integer_value * right->integer_value;
-        }
-    }
+typedef struct ASTAttachmentPoint ASTAttachmentPoint;
+
+struct Parser
+{
+    Lexer *lexer;
     
-    return result;
-}
+    ASTAttachmentPoint stack[64];
+    int just_opened_if_statement;
+    int stack_size;
+};
 
-void parser_init(Parser *parser)
-{}
+typedef struct Parser Parser;
 
-Value dummy = { .type = VALUE_TYPE_STRING, .string_value = "dummy" };
+int OP_PRECEDENCE_NONE = 0;
+int OP_PRECEDENCE_ADD = 1;
+int OP_PRECEDENCE_MULTIPLY = 2;
 
-Value *parser_consume_expression(Parser *parser, int parent_operator)
+ASTNode *parser_consume_expression(Parser *parser, int precedence)
 {
-    Value *total = 0;
-    int expecting_op = 0;
+    Lexer *lexer = parser->lexer;
 
-    while (1)
+    ASTNode *expression = alloc_ast_node(PROGRAM_NODE, 0);
+
+    int done = 0;
+    int expecting_op = 0;
+    while (!done)
     {
+        Token *token = &parser->lexer->token;
         int token_type = parser->lexer->token.type;
         if (!expecting_op)
         {
             if (token_type == TOKEN_TYPE_NAME)
             {
-                total = lookup_symbol(parser->lexer->token.text);
-                if (total == 0)
-                {
-                    printf("PARSE ERROR: Undefined symbol (parser.c:%d)\n", __LINE__);
-                    return 0;
-                }
+                expression->type = NAME_NODE;
+                expression->name = save_string_to_heap(token->text);
 
                 expecting_op = 1;
                 lexer_next_token(parser->lexer, 0);
             }
             else if (token_type == TOKEN_TYPE_STRING)
             {
-                total = malloc(sizeof(Value));
-                total->type = VALUE_TYPE_STRING;
-                total->string_value = save_string_to_heap(parser->lexer->token.text);
+                expression->type = STRING_NODE;
+                expression->string = save_string_to_heap(parser->lexer->token.text);
                 expecting_op = 1;
                 lexer_next_token(parser->lexer, 0);
             }
             else if (token_type == TOKEN_TYPE_NUMBER)
             {
-                total = malloc(sizeof(Value));
-                total->type = VALUE_TYPE_NUMBER;
+                expression->type = NUMBER_NODE;
 
                 int integer_value;
                 {
-                    char *text = parser->lexer->token.text;
+                    char *text = token->text;
                     int i = 0;
                     integer_value = 0;
                     while (text[i])               
@@ -158,7 +84,7 @@ Value *parser_consume_expression(Parser *parser, int parent_operator)
                         i += 1;
                     }
                 }
-                total->integer_value = integer_value;
+                expression->number = integer_value;
 
                 expecting_op = 1;
                 lexer_next_token(parser->lexer, 0);
@@ -166,14 +92,12 @@ Value *parser_consume_expression(Parser *parser, int parent_operator)
             else if (token_type == TOKEN_TYPE_PARENOPEN)
             {
                 lexer_next_token(parser->lexer, 0); // consume paren
-                Value *inner_value = parser_consume_expression(parser, TOKEN_TYPE_OPADD);
+                expression = parser_consume_expression(parser, OP_PRECEDENCE_NONE);
                 if (parser->lexer->token.type != TOKEN_TYPE_PARENCLOSE)
                 {
                     printf("PARSE ERROR: Expected right parenthesis (parser.c:%d)\n", __LINE__);
-                    return 0;
                 }
-                lexer_next_token(parser->lexer, 0); // consume close paren
-                total = inner_value;
+                lexer_next_token(parser->lexer, 0); // consume close paren                
                 expecting_op = 1;
             }
             else
@@ -184,363 +108,249 @@ Value *parser_consume_expression(Parser *parser, int parent_operator)
         }
         else
         {
-            if (token_type == TOKEN_TYPE_OPADD)
+            int token_is_operator = token_type == TOKEN_TYPE_OPADD || token_type == TOKEN_TYPE_OPMULTIPLY;
+            
+            int this_precedence;
+            if (token_type <= TOKEN_TYPE_OPADD) this_precedence = OP_PRECEDENCE_ADD;
+            else if (token_type <= TOKEN_TYPE_OPMULTIPLY) this_precedence = OP_PRECEDENCE_MULTIPLY;
+
+            if (token_is_operator && precedence <= this_precedence)
             {
-                if (parent_operator == TOKEN_TYPE_OPMULTIPLY)
+                lexer_next_token(parser->lexer, 0); // consume +
+                ASTNode *rhs = parser_consume_expression(parser, this_precedence);
+                
+                enum ASTNodeType operator_node_type;
+                if (token_type == TOKEN_TYPE_OPADD)
                 {
-                    // stop
-                    // the peek token at this point will be the + operator, so the caller better be
-                    // ready to handle an operator as the next token
-                    return total;
+                    operator_node_type = ADD_NODE;
+                }
+                else if (token_type == TOKEN_TYPE_OPMULTIPLY)
+                {
+                    operator_node_type = MULTIPLY_NODE;
                 }
                 else
                 {
-                    lexer_next_token(parser->lexer, 0); // consume +
-                    Value *rhs = parser_consume_expression(parser, TOKEN_TYPE_OPADD);
-                    total = interpreter_apply_operator(token_type, total, rhs);
-                    if (total == 0)
-                    {
-                        printf("PARSE ERROR: Could not compute (parser.c:%d)\n", __LINE__);
-                        return 0;
-                    }
-
-                    expecting_op = 1;
-                }
-            }
-            else if (token_type == TOKEN_TYPE_OPMULTIPLY)
-            {
-                lexer_next_token(parser->lexer, 0); // consume +
-                Value *rhs = parser_consume_expression(parser, TOKEN_TYPE_OPMULTIPLY);
-                total = interpreter_apply_operator(token_type, total, rhs);
-                if (total == 0)
-                {
-                    printf("PARSE ERROR: Could not compute (parser.c:%d)\n", __LINE__);
-                    return 0;
+                    printf("PARSE ERROR: Unexpected operator (parser.c:%d)\n", __LINE__);
                 }
 
+                ASTNode *operation = alloc_ast_node(operator_node_type, 0);
+                operation->first_child = expression;
+                expression->next_sibling = rhs;
+
+                expression->parent = operation;
+                rhs->parent = operation;
+
+                expression = operation;
+                
                 expecting_op = 1;
             }
             else
             {
-                // end of expression, I guess
-                return total;
+                return expression;
             }
         }
     }
 
-    return 0;
+    return expression;
 }
 
-void parser_consume_statement(Parser *parser, int do_execute)
+ASTNode *parser_consume_statement(Parser *parser)
 {
     Lexer *lexer = parser->lexer;
 
-    if (lexer->token.type == TOKEN_TYPE_RAW_TEXT)
+    ASTNode *statement = 0;
+
+    int done = 0;
+    while (!done)
     {
-        if(streq(lexer->token.text, "print"))
+        if (lexer->token.type == TOKEN_TYPE_RAW_TEXT)
         {
-            lexer_next_token(parser->lexer, 0);
-
-            // print statement
-            Value *value = parser_consume_expression(parser, TOKEN_TYPE_OPADD);
-            if (value == 0)
+            char *text = lexer->token.text;
+            if(streq(text, "print"))
             {
-                printf("PARSE ERROR: Could not evaluate expression (parser.c:%d)\n", __LINE__);
-                parser->error_flag = 1;
-                return;
+                // print statement
+                statement = alloc_ast_node(PRINT_NODE, 0);
+
+                lexer_next_token(parser->lexer, 0);
+                ASTNode *argument = parser_consume_expression(parser, OP_PRECEDENCE_NONE);
+                
+                statement->first_child = argument;
             }
-
-            if (do_execute)
+            else if (streq(text, "set"))
             {
-                if (value->type == VALUE_TYPE_STRING)
+                // set statement
+                statement = alloc_ast_node(SET_NODE, 0);
+
+                lexer_next_language_token(parser->lexer);
+
+                if (parser->lexer->token.type != TOKEN_TYPE_NAME)
                 {
-                    printf("%s\n", value->string_value);
+                    printf("PARSE ERROR: Expected name (parser.c:%d)\n", __LINE__);
                 }
-                else
+
+                char *name = save_string_to_heap(parser->lexer->token.text);
+                ASTNode *name_node = alloc_ast_node(NAME_NODE, statement);
+                name_node->name = name;
+
+                lexer_next_token(parser->lexer, 0);
+
+                if (parser->lexer->token.type != TOKEN_TYPE_OPASSIGN)
                 {
-                    printf("%d\n", value->integer_value);
+                    printf("PARSE ERROR: Expected '=' (parser.c:%d)\n", __LINE__);
                 }
+                
+                lexer_next_token(parser->lexer, 0);
+
+                ASTNode *rhs = parser_consume_expression(parser, OP_PRECEDENCE_NONE);
+                rhs->parent = statement;
+                name_node->next_sibling = rhs;
+
+                statement->first_child = name_node;
             }
-        }
-        else if (streq(lexer->token.text, "set"))
-        {
-            lexer_next_token(parser->lexer, 0);
-
-            if (parser->lexer->token.type != TOKEN_TYPE_NAME)
+            else if (streq(text, "if"))
             {
-                printf("PARSE ERROR: Expected name (parser.c:%d)\n", __LINE__);
-                parser->error_flag = 1;
-                return;
-            }
+                // if statement
+                statement = alloc_ast_node(IF_NODE, 0);
 
-            char *name = save_string_to_heap(parser->lexer->token.text);
+                lexer_next_language_token(parser->lexer);
 
-            lexer_next_token(parser->lexer, 0);
+                ASTNode *condition = parser_consume_expression(parser, OP_PRECEDENCE_NONE);
+                condition->parent = statement;
 
-            if (parser->lexer->token.type != TOKEN_TYPE_OPASSIGN)
-            {
-                printf("PARSE ERROR: Expected '=' (parser.c:%d)\n", __LINE__);
-                parser->error_flag = 1;
-                return;
-            }
-            
-            lexer_next_token(parser->lexer, 0);
-
-            Value *value = parser_consume_expression(parser, TOKEN_TYPE_OPADD);
-            if (value == 0)
-            {
-                printf("PARSE ERROR: Could not evaluate expression (parser.c:%d)\n", __LINE__);
-                parser->error_flag = 1;
-                return;
-            }
-
-            if (do_execute)
-            {
-                push_symbol(name, value);
-            }
-        }
-        else if (streq(lexer->token.text, "if"))
-        {
-            parser->if_flag = 1;
-            lexer_next_token(parser->lexer, 0);
-            Value *value = parser_consume_expression(parser, TOKEN_TYPE_OPADD);
-            if (value == 0)
-            {
-                printf("PARSE ERROR: Could not evaluate expression (parser.c:%d)\n", __LINE__);
-                parser->error_flag = 1;
-                return;
-            }
-
-            if (do_execute)
-            {
-                if (value->type == VALUE_TYPE_NUMBER && value->integer_value == 0)
-                {
-                    parser->failed_if_condition_flag = 1;
-                    return;
-                }
-            }
-        }
-        else
-        {
-            // host statement
-
-            // notice that this works whether the token is a name or a string
-            char *program_name = save_string_to_heap(parser->lexer->token.text);
-            if (do_execute) printf("Executing host program %s with arguments: ", program_name);
-
-            // arguments
-            lexer_next_token(parser->lexer, 1);
-            int token_type = lexer->token.type;
-            while (token_type == TOKEN_TYPE_RAW_TEXT || token_type == TOKEN_TYPE_STRING)
-            {
-                // argument
-                if (do_execute) printf("[%s] ", lexer->token.text);
-                lexer_next_token(lexer, 1);
-                token_type = lexer->token.type;
-            }
-            if (do_execute) printf("\n");
-        }
-    }
-    else
-    {
-        // don't recognize token, end of statement
-        return;
-    }
-}
-
-void parser_parse(Parser *parser, Lexer *lexer)
-{
-    int depth = 0;
-    int depth_at_which_to_resume_execution = 0;
-    int execute = 1;
-    parser->failed_if_condition_flag = 0;
-    parser->lexer = lexer;
-    lexer_next_token(lexer, 1); // prime lexer
-    while (1)
-    {
-        parser->error_flag = 0;        
-        parser->if_flag = 0;
-        parser->empty_flag = 0;
-        parser_consume_statement(parser, execute);
-
-        if (parser->error_flag) return;
-
-        if (parser->failed_if_condition_flag == 1)
-        {
-            execute = 0;
-        }
-
-        if (parser->empty_flag == 0 && parser->if_flag == 0)
-        {
-            if (parser->failed_if_condition_flag)
-            {
-                parser->failed_if_condition_flag = 0;
-                execute = 1;
-            }
-        }
-
-        int token_type = parser->lexer->token.type;
-        if (token_type == TOKEN_TYPE_NEWLINE)
-        {
-            lexer_next_token(parser->lexer, 1);
-        }
-        else if (token_type == TOKEN_TYPE_CURLYOPEN)
-        {
-            parser->failed_if_condition_flag = 0;
-            depth_at_which_to_resume_execution = depth;
-            depth += 1;
-            lexer_next_token(parser->lexer, 1);
-        }
-        else if (token_type == TOKEN_TYPE_CURLYCLOSE)
-        {
-            depth -= 1;
-            if (depth < 0)
-            {
-                printf("PARSE ERROR: Unbalanced curly braces (parser.c:%d)\n", __LINE__);
-                return;
-            }
-
-            if (depth == depth_at_which_to_resume_execution)
-            {
-                execute = 1;
-            }
-
-            lexer_next_token(parser->lexer, 1);
-        }
-        else if (token_type == TOKEN_TYPE_EOF)
-        {
-            // done
-            return;
-        }
-        else
-        {
-            // a statement ended mid-line and is followed by something else
-            // - could be an if statement immediately followed by its body
-            //
-            // we will have interpreted the first token of this statement in language mode,
-            // which we don't want. Backtrack and re-tokenize it in shell mode.
-            lexer_backtrack_and_go_again(lexer, 1);
-            continue;
-        }
-    }
-}
-
-void parser_print_tokens(Parser *parser, Lexer *lexer)
-{
-    parser->lexer = lexer;
-    int shell_mode = 1;
-    int is_first_token = 1;
-    while (1)
-    {
-        int has_tokens = lexer_next_token(parser->lexer, shell_mode);
-        if (!has_tokens) return;
-
-        int token_type = parser->lexer->token.type;
-        if (token_type == TOKEN_TYPE_RAW_TEXT)
-        {
-            if(streq(lexer->token.text, "print"))
-            {
-                shell_mode = 0;
-                printf("<KEYW %s> ", lexer->token.text);
-            }
-            else if (streq(lexer->token.text, "set"))
-            {
-                shell_mode = 0;
-                printf("<KEYW %s> ", lexer->token.text);
-            }
-            else if (streq(lexer->token.text, "if"))
-            {
-                shell_mode = 0;
-                printf("<KEYW %s> ", lexer->token.text);
+                statement->first_child = condition;
             }
             else
             {
-                printf("<RAW %s> ", lexer->token.text);
+                // host statement
+                statement = alloc_ast_node(HOST_NODE, 0);
+
+                char *program = save_string_to_heap(text);
+                ASTNode *program_node = alloc_ast_node(RAW_TEXT_NODE, statement);
+                program_node->string = program;
+                statement->first_child = program_node;
+
+                // arguments
+                lexer_next_shell_token(parser->lexer);
+                int t = lexer->token.type;
+                ASTNode *previous = program_node;
+                while (t == TOKEN_TYPE_RAW_TEXT || t == TOKEN_TYPE_STRING)
+                {
+                    // argument
+                    ASTNode *argument;
+                    if (t == TOKEN_TYPE_RAW_TEXT)
+                    {
+                        argument = alloc_ast_node(RAW_TEXT_NODE, statement);
+                        argument->string = save_string_to_heap(lexer->token.text);
+                    }
+                    else
+                    {
+                        argument = alloc_ast_node(STRING_NODE, statement);
+                        argument->string = save_string_to_heap(lexer->token.text);
+                    }
+
+                    previous->next_sibling = argument;
+                    previous = argument;
+
+                    lexer_next_shell_token(parser->lexer);
+                    t = lexer->token.type;
+                }
             }
-            is_first_token = 0;
-        }
-        else if (token_type == TOKEN_TYPE_NAME)
-        {
-            printf("<NAME %s> ", lexer->token.text);
-        }
-        else if (token_type == TOKEN_TYPE_NUMBER)
-        {
-            printf("<NUMBER %s> ", lexer->token.text);
-            
-        }
-        else if (token_type == TOKEN_TYPE_STRING)
-        {
-            printf("<STRING %s> ", lexer->token.text);
-        }
-        else if (token_type == TOKEN_TYPE_OPASSIGN)
-        {
-            printf("<OP => ");
-        }
-        else if (token_type == TOKEN_TYPE_OPADD)
-        {
-            printf("<OP +> ");
-        }
-        else if (token_type == TOKEN_TYPE_OPMULTIPLY)
-        {
-            printf("<OP *> ");
-        }
-        else if (token_type == TOKEN_TYPE_PARENOPEN)
-        {
-            printf("<PARENOPEN> ");
-        }
-        else if (token_type == TOKEN_TYPE_PARENCLOSE)
-        {
-            printf("<PARENCLOSE> ");
-        }
-        else if (token_type == TOKEN_TYPE_NEWLINE)
-        {
-            printf("<NEWLINE>\n");
-            shell_mode = 1;
-            is_first_token = 1;  
-        }
-        else if (token_type == TOKEN_TYPE_CURLYOPEN)
-        {
-            printf("<CURLYOPEN> ");
-            shell_mode = 1;
-            is_first_token = 1;  
-        }
-        else if (token_type == TOKEN_TYPE_CURLYCLOSE)
-        {
-            printf("<CURLYCLOSE> ");
-            shell_mode = 1;
-            is_first_token = 1;  
-        }
-        else if (token_type == TOKEN_TYPE_EOF)
-        {
-            // done
-            printf("<EOF>\n");
-            return;
         }
         else
         {
-            // error
-            printf("PARSE ERROR: Unexpected token after end of statement (parser.c:%d)\n", __LINE__);
-            return;
+            done = 1;
         }
     }
+
+    return statement;
 }
 
-char input[1024 * 1024];
-
-int main(int argc, char **argv)
+ASTAttachmentPoint *parser_pop(Parser *parser)
 {
-    FILE *file = fopen("input.txt", "r");
-    int input_length = fread(input, 1, sizeof(input), file);
-        
-    Lexer lexer;
-    lexer_init(&lexer, input, input_length);
+    ASTAttachmentPoint *top = &parser->stack[parser->stack_size - 1];
+    parser->stack_size -= 1;
+    return top;
+}
 
-    int parse = 1;
-    if (argc > 1 && argv[1][0] == 't') parse = 0;
+void parser_push(Parser *parser, ASTNode **node, ASTNode *parent)
+{
+    parser->stack[parser->stack_size].target = node;
+    parser->stack[parser->stack_size].parent = parent;
+    parser->stack_size += 1;
+}
 
-    Parser parser;
-    if (parse)
-        parser_parse(&parser, &lexer);
-    else
-        parser_print_tokens(&parser, &lexer);
+ASTNode *parse(char *input, int input_length)
+{
+    Lexer lexer[1];
+    lexer_init(lexer, input, input_length);
+    
+    Parser parser[1];
+    parser->lexer = lexer;
+
+    ASTNode *program = alloc_ast_node(PROGRAM_NODE, 0);
+    
+    parser->just_opened_if_statement = 0;
+    parser->stack[0].target = &program->first_child;
+    parser->stack[0].parent = program;
+    parser->stack_size = 1;
+
+    lexer_next_shell_token(lexer);
+    while (1)
+    {
+        ASTNode *node = parser_consume_statement(parser);
+
+        if (node)
+        {
+            ASTAttachmentPoint *attach = parser_pop(parser);
+            *(attach->target) = node;
+            node->parent = attach->parent;
+            if (!parser->just_opened_if_statement)
+            {
+                parser_push(parser, &node->next_sibling, node->parent);
+            }
+            parser->just_opened_if_statement = 0;
+
+            if (node->type == IF_NODE)
+            {                
+                parser_push(parser, &node->first_child->next_sibling, node);
+                parser->just_opened_if_statement = 1;
+            }
+        }
+
+        int t = parser->lexer->token.type;
+        if (t == TOKEN_TYPE_NEWLINE)
+        {
+            lexer_next_shell_token(lexer);
+        }
+        else if (t == TOKEN_TYPE_CURLYOPEN)
+        {
+            ASTNode *block = alloc_ast_node(CODEBLOCK_NODE, 0);
+            
+            ASTAttachmentPoint *attach = parser_pop(parser);
+            *(attach->target) = block;
+            block->parent = attach->parent;
+            if (!parser->just_opened_if_statement)
+            {
+                parser_push(parser, &block->next_sibling, block->parent);
+            }
+            parser->just_opened_if_statement = 0;
+
+            parser_push(parser, &block->first_child, block);
+
+            lexer_next_shell_token(lexer);
+        }
+        else if (t == TOKEN_TYPE_CURLYCLOSE)
+        {
+            parser_pop(parser);
+            lexer_next_shell_token(lexer);
+        }
+        else if (t == TOKEN_TYPE_EOF)
+        {
+            return program;
+        }
+        else
+        {
+            lexer_backtrack_and_go_again(lexer, 1);
+        }
+    }
 }

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "ast_parser.c"
+
+#include "parser.c"
 
 enum ValueType
 {
