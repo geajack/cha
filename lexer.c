@@ -44,6 +44,8 @@ enum TokenType
     
     TOKEN_TYPE_PARENOPEN,
     TOKEN_TYPE_PARENCLOSE,
+    TOKEN_TYPE_CURLYOPEN,
+    TOKEN_TYPE_CURLYCLOSE,
     
     TOKEN_TYPE_EOF
 };
@@ -205,6 +207,22 @@ int lexer_next_token(Lexer *lexer, int shell_mode)
         else if (c == ' ' || c == '\t')
         {
             lexer_consume(lexer);
+        }
+        else if (c == '{')
+        {
+            token->type = TOKEN_TYPE_CURLYOPEN;
+            token->text[0] = c;
+            token->text[1] = 0;
+            lexer_consume(lexer);
+            return 1;
+        }
+        else if (c == '}')
+        {
+            token->type = TOKEN_TYPE_CURLYCLOSE;
+            token->text[0] = c;
+            token->text[1] = 0;
+            lexer_consume(lexer);
+            return 1;
         }
         else if (c == LexerEOF)
         {

@@ -327,6 +327,7 @@ int parser_consume_statement(Parser *parser, int do_execute)
 void parser_parse(Parser *parser, Lexer *lexer)
 {
     int execute_flag = 1;
+    int depth = 0;
     parser->lexer = lexer;
     lexer_next_token(lexer, 1); // prime lexer
     while (parser_consume_statement(parser, execute_flag))
@@ -334,6 +335,22 @@ void parser_parse(Parser *parser, Lexer *lexer)
         int token_type = parser->lexer->token.type;
         if (token_type == TOKEN_TYPE_NEWLINE)
         {
+            lexer_next_token(parser->lexer, 1);
+        }
+        else if (token_type == TOKEN_TYPE_CURLYOPEN)
+        {
+            depth += 1;
+            lexer_next_token(parser->lexer, 1);
+        }
+        else if (token_type == TOKEN_TYPE_CURLYCLOSE)
+        {
+            depth -= 1;
+            if (depth < 0)
+            {
+                printf("PARSE ERROR: Unbalanced curly braces (parser.c:%d)\n", __LINE__);
+                return;
+            }
+
             lexer_next_token(parser->lexer, 1);
         }
         else if (token_type == TOKEN_TYPE_EOF)
@@ -418,6 +435,18 @@ void parser_print_tokens(Parser *parser, Lexer *lexer)
             shell_mode = 1;
             is_first_token = 1;  
         }
+        else if (token_type == TOKEN_TYPE_CURLYOPEN)
+        {
+            printf("<CURLYOPEN>\n");
+            shell_mode = 1;
+            is_first_token = 1;  
+        }
+        else if (token_type == TOKEN_TYPE_CURLYCLOSE)
+        {
+            printf("<CURLYCLOSE>\n");
+            shell_mode = 1;
+            is_first_token = 1;  
+        }
         else if (token_type == TOKEN_TYPE_EOF)
         {
             // done
@@ -440,7 +469,9 @@ int main(int argc, char **argv)
         "set message = \"hello world\"\n"
         "print \"hello\"\n"
         "print message\n"
-        "print value + 100\n"
+        "{\n"
+        "    print value + 100\n"
+        "}\n"
         "./ffmpeg\n"
         "    ... -i audio.mp3\n"
         "    ... converted.ogg";
