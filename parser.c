@@ -18,7 +18,11 @@ enum ValueType
 struct Value
 {
     enum ValueType type;
-    char *string_value;
+    union
+    {
+        char *string_value;
+        int integer_value;
+    };
 };
 
 typedef struct Value Value;
@@ -70,12 +74,31 @@ char *save_string_to_heap(char *string)
 
 Value *interpreter_apply_operator(int op, Value *left, Value *right)
 {
-    char *buffer = malloc(1024);
-    char opchar = op == TOKEN_TYPE_OPADD ? '+' : '*';
-    sprintf(buffer, "(%s %c %s)", left->string_value, opchar, right->string_value);
     Value *result = malloc(sizeof(Value));
-    result->type = VALUE_TYPE_STRING;
-    result->string_value = buffer;
+
+    if (op == TOKEN_TYPE_OPADD)
+    {
+        if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
+        {
+            // add
+            result->type = VALUE_TYPE_NUMBER;
+            result->integer_value = left->integer_value + right->integer_value;
+        }
+        else
+        {
+            // concatenate
+        }
+    }
+    else if (op == TOKEN_TYPE_OPMULTIPLY)
+    {
+        if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
+        {
+            // add
+            result->type = VALUE_TYPE_NUMBER;
+            result->integer_value = left->integer_value * right->integer_value;
+        }
+    }
+    
     return result;
 }
 
@@ -117,8 +140,22 @@ Value *parser_consume_expression(Parser *parser, int parent_operator)
             else if (token_type == TOKEN_TYPE_NUMBER)
             {
                 total = malloc(sizeof(Value));
-                total->type = VALUE_TYPE_STRING;
-                total->string_value = save_string_to_heap(parser->lexer->token.text);
+                total->type = VALUE_TYPE_NUMBER;
+
+                int integer_value;
+                {
+                    char *text = parser->lexer->token.text;
+                    int i = 0;
+                    integer_value = 0;
+                    while (text[i])               
+                    {
+                        int digit = text[i] - '0';
+                        integer_value = integer_value * 10 + digit;
+                        i += 1;
+                    }
+                }
+                total->integer_value = integer_value;
+
                 expecting_op = 1;
                 lexer_next_token(parser->lexer, 0);
             }
@@ -208,7 +245,14 @@ int parser_consume_statement(Parser *parser)
                 return 0;
             }
 
-            printf("%s\n", value->string_value);
+            if (value->type == VALUE_TYPE_STRING)
+            {
+                printf("%s\n", value->string_value);
+            }
+            else
+            {
+                printf("%d\n", value->integer_value);
+            }
         }
         else if (streq(lexer->token.text, "set"))
         {
