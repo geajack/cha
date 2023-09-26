@@ -227,7 +227,7 @@ Value *parser_consume_expression(Parser *parser, int parent_operator)
     return 0;
 }
 
-int parser_consume_statement(Parser *parser)
+int parser_consume_statement(Parser *parser, int do_execute)
 {
     Lexer *lexer = parser->lexer;
 
@@ -245,13 +245,16 @@ int parser_consume_statement(Parser *parser)
                 return 0;
             }
 
-            if (value->type == VALUE_TYPE_STRING)
+            if (do_execute)
             {
-                printf("%s\n", value->string_value);
-            }
-            else
-            {
-                printf("%d\n", value->integer_value);
+                if (value->type == VALUE_TYPE_STRING)
+                {
+                    printf("%s\n", value->string_value);
+                }
+                else
+                {
+                    printf("%d\n", value->integer_value);
+                }
             }
         }
         else if (streq(lexer->token.text, "set"))
@@ -283,7 +286,10 @@ int parser_consume_statement(Parser *parser)
                 return 0;
             }
 
-            push_symbol(name, value);
+            if (do_execute)
+            {
+                push_symbol(name, value);
+            }
         }
         else
         {
@@ -301,12 +307,12 @@ int parser_consume_statement(Parser *parser)
                 // argument
                 if (token_type == TOKEN_TYPE_RAW_TEXT)
                 {
-                    printf("[%s] ", lexer->token.text);
+                    if (do_execute) printf("[%s] ", lexer->token.text);
                 }
                 lexer_next_token(lexer, 1);
                 token_type = lexer->token.type;
             }
-            printf("\n");
+            if (do_execute) printf("\n");
         }
         
         return 1;
@@ -320,9 +326,10 @@ int parser_consume_statement(Parser *parser)
 
 void parser_parse(Parser *parser, Lexer *lexer)
 {
+    int execute_flag = 1;
     parser->lexer = lexer;
     lexer_next_token(lexer, 1); // prime lexer
-    while (parser_consume_statement(parser))
+    while (parser_consume_statement(parser, execute_flag))
     {
         int token_type = parser->lexer->token.type;
         if (token_type == TOKEN_TYPE_NEWLINE)
