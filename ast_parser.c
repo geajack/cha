@@ -18,6 +18,9 @@ char *save_string_to_heap(char *string)
 struct Parser
 {
     Lexer *lexer;
+    ASTNode *previous;
+    int return_to_parent;
+    int previous_is_parent;
 };
 
 typedef struct Parser Parser;
@@ -252,6 +255,31 @@ ASTNode *parser_consume_statement(Parser *parser)
     return statement;
 }
 
+void parser_push_node(Parser *parser, ASTNode *node)
+{
+    if (parser->previous_is_parent)
+    {
+        parser->previous->first_child = node;
+        node->parent = parser->previous;
+        parser->previous_is_parent = 0;
+    }
+    else
+    {
+        parser->previous->next_sibling = node;
+        node->parent = parser->previous->parent;
+    }
+
+    if (parser->return_to_parent)
+    {
+        parser->previous = parser->previous->parent;
+        parser->return_to_parent = 0;
+    }
+    else
+    {
+        parser->previous = node;
+    }
+}
+
 ASTNode *parse(char *input, int input_length)
 {
     Lexer lexer[1];
@@ -261,9 +289,10 @@ ASTNode *parse(char *input, int input_length)
     parser->lexer = lexer;
 
     ASTNode *program = alloc_ast_node(PROGRAM_NODE, 0);
-    ASTNode *previous = program;
-    int is_first_child = 1;
-    int only_one_child = 0;
+    
+    parser->previous = program;
+    parser->return_to_parent = 0;
+    parser->previous_is_parent = 1;
 
     lexer_next_shell_token(lexer);
     while (1)
@@ -272,29 +301,12 @@ ASTNode *parse(char *input, int input_length)
 
         if (node)
         {
-            if (is_first_child)
-            {
-                previous->first_child = node;
-                node->parent = previous;
-                is_first_child = 0;
-
-                if (only_one_child)
-                {
-                    previous = previous->parent;
-                }
-            }
-            else
-            {
-                previous->next_sibling = node;
-                node->parent = previous->next_sibling->parent;
-            }
-
-            previous = node;
+            parser_push_node(parser, node);
 
             if (node->type == IF_NODE)
             {                
-                is_first_child = 1;
-                only_one_child = 1;
+                parser->previous = node->first_child;
+                parser->return_to_parent = 1;
             }
         }
 
@@ -307,26 +319,15 @@ ASTNode *parse(char *input, int input_length)
         {
             ASTNode *block = alloc_ast_node(CODEBLOCK_NODE, 0);
             
-            if (is_first_child)
-            {
-                previous->first_child = block;
-                block->parent = previous;                
-            }
-            else
-            {
-                previous->next_sibling = block;
-                block->parent = previous->next_sibling->parent;
-            }
-
-            is_first_child = 1;
-            only_one_child = 0;
+            parser_push_node(parser, block);
+            parser->previous = block;
+            parser->previous_is_parent = 1;
 
             lexer_next_shell_token(lexer);
         }
         else if (t == TOKEN_TYPE_CURLYCLOSE)
         {
-            previous = previous->parent;
-            is_first_child = 0;
+            parser->previous = parser->previous->parent;
             lexer_next_shell_token(lexer);
         }
         else if (t == TOKEN_TYPE_EOF)
