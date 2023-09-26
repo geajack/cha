@@ -1,3 +1,40 @@
+stack of siblings:
+- if 1
+- if 2
+- if 3
+- if 4
+
+state = just opened if statement
+
+initial stack: [program->first_child]
+
+push regular statement:
+  p = pop  
+  *p = self
+  if not just opened if statement:
+    push self->next_sibling
+
+push if statement:
+  p = pop
+  *p = self
+  if not just opened if statement:
+    push self->next_sibling
+  push self->condition->next_sibling
+  set "just pushed if statement"
+
+open codeblock:
+  p = pop
+  *p = self
+  if not just opened if statement:
+    push self->next_sibling
+  push self->first_child
+
+
+close codeblock:
+  pop
+
+---
+
 A program is a sequence of statements. A statement can be either:
 
 - Statement chain

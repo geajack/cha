@@ -8,7 +8,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/ast_parser",
+            "program": "${workspaceFolder}/interpreter",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",

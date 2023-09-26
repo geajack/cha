@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "ast.c"
+#include "ast_parser.c"
 
 enum ValueType
 {
@@ -195,29 +195,17 @@ void interpret(ASTNode *root)
     }
 }
 
+char input[1024 * 1024];
+
 int main()
 {
-    ASTNode program;
-    ASTNode print1;
-    ASTNode print1_argument;
+    FILE *file = fopen("input.txt", "r");
+    int input_length = fread(input, 1, sizeof(input), file);
+    
+    ASTNode *program = parse(input, input_length);
 
-    program.type = PROGRAM_NODE;
-    program.parent = 0;
-    program.first_child = &print1;
-    program.next_sibling = 0;
-
-    print1.type = PRINT_NODE;
-    print1.parent = &program;
-    print1.first_child = &print1_argument;
-    print1.next_sibling = 0;
-
-    print1_argument.type = STRING_NODE;
-    print1_argument.parent = &print1;
-    print1_argument.first_child = 0;
-    print1_argument.next_sibling = 0;
-    print1_argument.string = "Hello, world!";
-
-    interpret(&program);
+    // interpret(program);
+    print_ast(program);
 
     return 0;
 }

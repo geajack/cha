@@ -18,9 +18,10 @@ char *save_string_to_heap(char *string)
 struct Parser
 {
     Lexer *lexer;
-    ASTNode *previous;
-    int return_to_parent;
-    int previous_is_parent;
+    
+    ASTNode **stack[64];
+    int just_opened_if_statement;
+    int stack_size;
 };
 
 typedef struct Parser Parser;
@@ -255,29 +256,17 @@ ASTNode *parser_consume_statement(Parser *parser)
     return statement;
 }
 
-void parser_push_node(Parser *parser, ASTNode *node)
+ASTNode **parser_pop(Parser *parser)
 {
-    if (parser->previous_is_parent)
-    {
-        parser->previous->first_child = node;
-        node->parent = parser->previous;
-        parser->previous_is_parent = 0;
-    }
-    else
-    {
-        parser->previous->next_sibling = node;
-        node->parent = parser->previous->parent;
-    }
+    ASTNode **top = parser->stack[parser->stack_size - 1];
+    parser->stack_size -= 1;
+    return top;
+}
 
-    if (parser->return_to_parent)
-    {
-        parser->previous = parser->previous->parent;
-        parser->return_to_parent = 0;
-    }
-    else
-    {
-        parser->previous = node;
-    }
+void parser_push(Parser *parser, ASTNode **node)
+{
+    parser->stack[parser->stack_size] = node;
+    parser->stack_size += 1;
 }
 
 ASTNode *parse(char *input, int input_length)
@@ -290,9 +279,9 @@ ASTNode *parse(char *input, int input_length)
 
     ASTNode *program = alloc_ast_node(PROGRAM_NODE, 0);
     
-    parser->previous = program;
-    parser->return_to_parent = 0;
-    parser->previous_is_parent = 1;
+    parser->just_opened_if_statement = 0;
+    parser->stack[0] = &program->first_child;
+    parser->stack_size = 1;
 
     lexer_next_shell_token(lexer);
     while (1)
@@ -301,12 +290,18 @@ ASTNode *parse(char *input, int input_length)
 
         if (node)
         {
-            parser_push_node(parser, node);
+            ASTNode **target = parser_pop(parser);
+            *target = node;
+            if (!parser->just_opened_if_statement)
+            {
+                parser_push(parser, &node->next_sibling);
+            }
+            parser->just_opened_if_statement = 0;
 
             if (node->type == IF_NODE)
             {                
-                parser->previous = node->first_child;
-                parser->return_to_parent = 1;
+                parser_push(parser, &node->first_child->next_sibling);
+                parser->just_opened_if_statement = 1;
             }
         }
 
@@ -319,15 +314,21 @@ ASTNode *parse(char *input, int input_length)
         {
             ASTNode *block = alloc_ast_node(CODEBLOCK_NODE, 0);
             
-            parser_push_node(parser, block);
-            parser->previous = block;
-            parser->previous_is_parent = 1;
+            ASTNode **target = parser_pop(parser);
+            *target = block;
+            if (!parser->just_opened_if_statement)
+            {
+                parser_push(parser, &block->next_sibling);
+            }
+            parser->just_opened_if_statement = 0;
+
+            parser_push(parser, &block->first_child);
 
             lexer_next_shell_token(lexer);
         }
         else if (t == TOKEN_TYPE_CURLYCLOSE)
         {
-            parser->previous = parser->previous->parent;
+            parser_pop(parser);
             lexer_next_shell_token(lexer);
         }
         else if (t == TOKEN_TYPE_EOF)
@@ -339,16 +340,4 @@ ASTNode *parse(char *input, int input_length)
             lexer_backtrack_and_go_again(lexer, 1);
         }
     }
-}
-
-char input[1024 * 1024];
-
-int main(int argc, char **argv)
-{
-    FILE *file = fopen("input.txt", "r");
-    int input_length = fread(input, 1, sizeof(input), file);
-    
-    ASTNode *tree = parse(input, input_length);
-
-    print_ast(tree);
 }
