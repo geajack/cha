@@ -43,9 +43,20 @@ Value *alloc_value(int type)
 
 void set_symbol(char *name, Value *value)
 {
-    symbol_table[n_symbols].name = name;
-    symbol_table[n_symbols].value = value;
-    n_symbols += 1;
+    int i;
+    for (i = 0; i < n_symbols; i++)
+    {
+        char *symbol_name = symbol_table[i].name;
+        if (streq(symbol_name, name))
+        {
+            break;
+        }
+    }
+
+    symbol_table[i].name = name;
+    symbol_table[i].value = value;
+    
+    if (i == n_symbols) n_symbols += 1;
 }
 
 Value *lookup_symbol(char *name)
@@ -167,7 +178,20 @@ void execute_host_program(char *program, char **arguments, int n_arguments)
 
 int is_truthy(Value *value)
 {
-    return 1;
+    if (value->type == VALUE_TYPE_BOOLEAN)
+    {
+        return value->boolean_value;
+    }
+    else if (value->type == VALUE_TYPE_NUMBER)
+    {
+        return value->integer_value != 0;
+    }
+    else if (value->type == VALUE_TYPE_STRING)
+    {
+        return value->string_value[0] != 0;
+    }
+
+    return 0;
 }
 
 void interpret(ASTNode *root)
@@ -224,13 +248,30 @@ void interpret(ASTNode *root)
                 next_statement = body;
             }
         }
+        else if (statement->type == WHILE_NODE)
+        {
+            ASTNode *condition = statement->first_child;
+            ASTNode *body = condition->next_sibling;
+            Value *value = evaluate(condition);
+            if (is_truthy(value))
+            {
+                next_statement = body;
+            }
+        }
                 
         while (!next_statement)
         {
             statement = statement->parent;
+            
             if (statement == root)
             {
                 done = 1;
+                break;
+            }
+            
+            if (statement->type == WHILE_NODE)
+            {
+                next_statement = statement;
                 break;
             }
 
