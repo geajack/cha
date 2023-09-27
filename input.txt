@@ -3,4 +3,4 @@ while i < 10
 {
     print i
     set i = i + 1
-}
+} | wc -l

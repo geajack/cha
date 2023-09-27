@@ -297,6 +297,19 @@ void parser_push(Parser *parser, ASTNode **node, ASTNode *parent)
     parser->stack_size += 1;
 }
 
+void parser_attach(Parser *parser, ASTNode *node)
+{
+    ASTAttachmentPoint *attach = parser_pop(parser);
+    *(attach->target) = node;
+    node->parent = attach->parent;
+
+    if (!parser->just_opened_if_statement)
+    {
+        parser_push(parser, &node->next_sibling, node->parent);
+    }
+    parser->just_opened_if_statement = 0;
+}
+
 ASTNode *parse(char *input, int input_length)
 {
     Lexer lexer[1];
@@ -319,14 +332,7 @@ ASTNode *parse(char *input, int input_length)
 
         if (node)
         {
-            ASTAttachmentPoint *attach = parser_pop(parser);
-            *(attach->target) = node;
-            node->parent = attach->parent;
-            if (!parser->just_opened_if_statement)
-            {
-                parser_push(parser, &node->next_sibling, node->parent);
-            }
-            parser->just_opened_if_statement = 0;
+            parser_attach(parser, node);
 
             if (node->type == IF_NODE || node->type == WHILE_NODE)
             {                
@@ -348,14 +354,7 @@ ASTNode *parse(char *input, int input_length)
         {
             ASTNode *block = alloc_ast_node(CODEBLOCK_NODE, 0);
             
-            ASTAttachmentPoint *attach = parser_pop(parser);
-            *(attach->target) = block;
-            block->parent = attach->parent;
-            if (!parser->just_opened_if_statement)
-            {
-                parser_push(parser, &block->next_sibling, block->parent);
-            }
-            parser->just_opened_if_statement = 0;
+            parser_attach(parser, block);
 
             parser_push(parser, &block->first_child, block);
 
