@@ -39,9 +39,12 @@ enum TokenType
     TOKEN_TYPE_NEWLINE,
     TOKEN_TYPE_RAW_TEXT,
     
+    TOKEN_TYPESET_OP_FIRST,
     TOKEN_TYPE_OPASSIGN,
     TOKEN_TYPE_OPADD,
     TOKEN_TYPE_OPMULTIPLY,
+    TOKEN_TYPE_OPLESSTHAN,
+    TOKEN_TYPESET_OP_LAST,
     
     TOKEN_TYPE_PARENOPEN,
     TOKEN_TYPE_PARENCLOSE,
@@ -299,6 +302,12 @@ int lexer_next_token(Lexer *lexer, int shell_mode)
                 else if (c == '*')
                 {
                     token->type = TOKEN_TYPE_OPMULTIPLY;
+                    lexer_consume(lexer);
+                    return 1;
+                }
+                else if (c == '<')
+                {
+                    token->type = TOKEN_TYPE_OPLESSTHAN;
                     lexer_consume(lexer);
                     return 1;
                 }

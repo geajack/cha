@@ -6,7 +6,8 @@
 enum ValueType
 {
     VALUE_TYPE_STRING,
-    VALUE_TYPE_NUMBER
+    VALUE_TYPE_NUMBER,
+    VALUE_TYPE_BOOLEAN
 };
 
 struct Value
@@ -16,6 +17,7 @@ struct Value
     {
         char *string_value;
         int integer_value;
+        int boolean_value;
     };
 };
 
@@ -48,6 +50,19 @@ void set_symbol(char *name, Value *value)
 
 Value *lookup_symbol(char *name)
 {
+    if (streq(name, "true"))
+    {
+        Value *value = alloc_value(VALUE_TYPE_BOOLEAN);
+        value->boolean_value = 1;
+        return value;
+    }
+    else if (streq(name, "false"))
+    {
+        Value *value = alloc_value(VALUE_TYPE_BOOLEAN);
+        value->boolean_value = 0;
+        return value;
+    }
+
     for (int i = 0; i < n_symbols; i++)
     {
         char *symbol_name = symbol_table[i].name;
@@ -85,7 +100,7 @@ Value *evaluate(ASTNode *expression)
         {
             int sum = left->integer_value + right->integer_value;
             result = alloc_value(VALUE_TYPE_NUMBER);
-            result->integer_value = expression->number;
+            result->integer_value = sum;
         }
     }
     else if (type == MULTIPLY_NODE)
@@ -95,9 +110,21 @@ Value *evaluate(ASTNode *expression)
 
         if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
         {
-            int sum = left->integer_value * right->integer_value;
+            int product = left->integer_value * right->integer_value;
             result = alloc_value(VALUE_TYPE_NUMBER);
-            result->integer_value = expression->number;
+            result->integer_value = product;
+        }
+    }
+    else if (type == LESSTHAN_NODE)
+    {
+        Value *left = evaluate(expression->first_child);
+        Value *right = evaluate(expression->first_child->next_sibling);
+
+        if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
+        {
+            int comparison = left->integer_value < right->integer_value;
+            result = alloc_value(VALUE_TYPE_BOOLEAN);
+            result->boolean_value = comparison;
         }
     }
 
@@ -113,6 +140,17 @@ void print(Value *value)
     else if (value->type == VALUE_TYPE_NUMBER)
     {
         printf("%d\n", value->integer_value);
+    }
+    else if (value->type == VALUE_TYPE_BOOLEAN)
+    {
+        if (value->boolean_value)
+        {
+            printf("true\n");
+        }
+        else
+        {
+            printf("false\n");
+        }
     }
 }
 
@@ -212,7 +250,7 @@ int main(int argc, char **argv)
     ASTNode *program = parse(input, input_length);
 
     int do_interpret = 1;
-    if (argc > 0) if (argv[1][0] == 't') do_interpret = 0;
+    if (argc > 1) if (argv[1][0] == 't') do_interpret = 0;
 
     if (do_interpret)
         interpret(program);

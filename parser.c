@@ -36,8 +36,9 @@ struct Parser
 typedef struct Parser Parser;
 
 int OP_PRECEDENCE_NONE = 0;
-int OP_PRECEDENCE_ADD = 1;
-int OP_PRECEDENCE_MULTIPLY = 2;
+int OP_PRECEDENCE_COMPARISON = 1;
+int OP_PRECEDENCE_ADD = 2;
+int OP_PRECEDENCE_MULTIPLY = 3;
 
 ASTNode *parser_consume_expression(Parser *parser, int precedence)
 {
@@ -108,11 +109,12 @@ ASTNode *parser_consume_expression(Parser *parser, int precedence)
         }
         else
         {
-            int token_is_operator = token_type == TOKEN_TYPE_OPADD || token_type == TOKEN_TYPE_OPMULTIPLY;
+            int token_is_operator = TOKEN_TYPESET_OP_FIRST < token_type && token_type < TOKEN_TYPESET_OP_LAST;
             
             int this_precedence;
-            if (token_type <= TOKEN_TYPE_OPADD) this_precedence = OP_PRECEDENCE_ADD;
-            else if (token_type <= TOKEN_TYPE_OPMULTIPLY) this_precedence = OP_PRECEDENCE_MULTIPLY;
+            if (token_type == TOKEN_TYPE_OPADD) this_precedence = OP_PRECEDENCE_ADD;
+            else if (token_type == TOKEN_TYPE_OPMULTIPLY) this_precedence = OP_PRECEDENCE_MULTIPLY;
+            else if (token_type == TOKEN_TYPE_OPLESSTHAN) this_precedence = OP_PRECEDENCE_COMPARISON;
 
             if (token_is_operator && precedence <= this_precedence)
             {
@@ -127,6 +129,10 @@ ASTNode *parser_consume_expression(Parser *parser, int precedence)
                 else if (token_type == TOKEN_TYPE_OPMULTIPLY)
                 {
                     operator_node_type = MULTIPLY_NODE;
+                }
+                else if (token_type == TOKEN_TYPE_OPLESSTHAN)
+                {
+                    operator_node_type = LESSTHAN_NODE;
                 }
                 else
                 {
