@@ -1,3 +1,39 @@
+if false
+{
+    print "hello"
+} | wc - | grep 0 | set result = input()
+
+{ if false
+{
+    print "hello"
+}} | wc - | grep 0 | set result = input()
+
+{
+    while 1
+    {
+        print "hello"
+        set x = x + 1
+    }
+}
+| {
+    while 1
+    {
+        set line = inputline()
+        print line + x
+    }
+}
+
+PIPE
+    IF
+        FALSE
+        PRINT "HELLO"
+    PIPE
+        HOST wc -
+        PIPE
+            grep 0
+            SET result = input()
+
+
 set message = "Hello, world!"
 set number = 2
 

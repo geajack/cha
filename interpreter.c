@@ -29,6 +29,9 @@ struct Symbol
 
 typedef struct Symbol Symbol;
 
+Symbol symbol_table[64];
+int n_symbols = 0;
+
 Value *alloc_value(int type)
 {
     Value *value = malloc(sizeof(Value));
@@ -38,16 +41,19 @@ Value *alloc_value(int type)
 
 void set_symbol(char *name, Value *value)
 {
-
+    symbol_table[n_symbols].name = name;
+    symbol_table[n_symbols].value = value;
+    n_symbols += 1;
 }
 
 Value *lookup_symbol(char *name)
 {
-    Value *value = alloc_value(VALUE_TYPE_STRING);
-    char *string = malloc(128);
-    sprintf(string, "dummy value for <%s>", name);
-    value->string_value = string;
-    return value;
+    for (int i = 0; i < n_symbols; i++)
+    {
+        char *symbol_name = symbol_table[i].name;
+        if (streq(symbol_name, name)) return symbol_table[i].value;
+    }
+    return 0;
 }
 
 Value *evaluate(ASTNode *expression)
@@ -198,15 +204,20 @@ void interpret(ASTNode *root)
 
 char input[1024 * 1024];
 
-int main()
+int main(int argc, char **argv)
 {
     FILE *file = fopen("input.txt", "r");
     int input_length = fread(input, 1, sizeof(input), file);
     
     ASTNode *program = parse(input, input_length);
 
-    interpret(program);
-    // print_ast(program);
+    int do_interpret = 1;
+    if (argc > 0) if (argv[1][0] == 't') do_interpret = 0;
+
+    if (do_interpret)
+        interpret(program);
+    else
+        print_ast(program);
 
     return 0;
 }
