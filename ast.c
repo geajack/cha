@@ -8,6 +8,7 @@ enum ASTNodeType
     PRINT_NODE,
     SET_NODE,
     IF_NODE,
+    WHILE_NODE,
     HOST_NODE,
     ADD_NODE,
     MULTIPLY_NODE,
@@ -73,6 +74,10 @@ void print_ast_indented(ASTNode *tree, int indent)
 
         case IF_NODE:
             printf("IF");
+        break;
+
+        case WHILE_NODE:
+            printf("WHILE");
         break;
 
         case HOST_NODE:

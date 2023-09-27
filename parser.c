@@ -225,6 +225,18 @@ ASTNode *parser_consume_statement(Parser *parser)
 
                 statement->first_child = condition;
             }
+            else if (streq(text, "while"))
+            {
+                // while statement
+                statement = alloc_ast_node(WHILE_NODE, 0);
+
+                lexer_next_language_token(parser->lexer);
+
+                ASTNode *condition = parser_consume_expression(parser, OP_PRECEDENCE_NONE);
+                condition->parent = statement;
+
+                statement->first_child = condition;
+            }
             else
             {
                 // host statement
@@ -316,7 +328,7 @@ ASTNode *parse(char *input, int input_length)
             }
             parser->just_opened_if_statement = 0;
 
-            if (node->type == IF_NODE)
+            if (node->type == IF_NODE || node->type == WHILE_NODE)
             {                
                 parser_push(parser, &node->first_child->next_sibling, node);
                 parser->just_opened_if_statement = 1;
