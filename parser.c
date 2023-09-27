@@ -340,6 +340,10 @@ ASTNode *parse(char *input, int input_length)
         {
             lexer_next_shell_token(lexer);
         }
+        else if (t == TOKEN_TYPE_PIPE)
+        {
+            lexer_next_shell_token(lexer);
+        }
         else if (t == TOKEN_TYPE_CURLYOPEN)
         {
             ASTNode *block = alloc_ast_node(CODEBLOCK_NODE, 0);

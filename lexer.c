@@ -46,6 +46,8 @@ enum TokenType
     TOKEN_TYPE_OPLESSTHAN,
     TOKEN_TYPESET_OP_LAST,
     
+    TOKEN_TYPE_PIPE,
+    
     TOKEN_TYPE_PARENOPEN,
     TOKEN_TYPE_PARENCLOSE,
     TOKEN_TYPE_CURLYOPEN,
@@ -227,6 +229,12 @@ int lexer_next_token(Lexer *lexer, int shell_mode)
             token->type = TOKEN_TYPE_CURLYCLOSE;
             token->text[0] = c;
             token->text[1] = 0;
+            lexer_consume(lexer);
+            return 1;
+        }
+        else if (c == '|')
+        {
+            token->type = TOKEN_TYPE_PIPE;
             lexer_consume(lexer);
             return 1;
         }
