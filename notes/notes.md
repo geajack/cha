@@ -1,3 +1,62 @@
+get a node of the AST
+
+execute it
+   -> it might suggest a next node where it wants the IP to go (other wise that's null)
+
+did the instruction we just execute tell us where it wanted to go? if so, go there
+
+else, if it's the root node we're done
+
+else:
+    go to its sibling, if that's null go to the parent, etc
+
+if statement has opinion
+{
+    go there
+}
+else while not gone anywhere
+{
+    if current == root
+    {
+        stop
+    }
+    else
+    {
+        if (current->next_sibling)
+        {
+            go to next sibling
+        }
+        else
+        {
+            current = parent
+        }
+
+        if current is a while loop
+        {
+            go to current
+        }
+    }
+}
+
+next = 0
+
+if statement has opinion:
+    next = where statement wants to go    
+
+node = current
+while havent found next:
+    if node is root:
+        STOP
+    else if node->next_sibling
+        next = node->next_sibling        
+    else:
+        if node->parent is while loop:
+            next = node->parent
+        else:
+            node = node->parent
+
+---
+
 stack of siblings:
 - if 1
 - if 2

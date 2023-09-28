@@ -196,19 +196,17 @@ int is_truthy(Value *value)
 
 void interpret(ASTNode *root)
 {
-    if (root->type != PROGRAM_NODE)
-    {
-        printf("Error (interpreter.c:%d)\n", __LINE__);
-        return;
-    }
-
     int done = 0;
     ASTNode *statement = root->first_child;
     while (!done)
     {
-        ASTNode *next_statement = statement->next_sibling;
+        ASTNode *down = 0;
 
-        if (statement->type == PRINT_NODE)
+        if (statement->type == PROGRAM_NODE)
+        {
+            down = statement->first_child;
+        }
+        else if (statement->type == PRINT_NODE)
         {
             Value *value = evaluate(statement->first_child);
             print(value);
@@ -236,7 +234,7 @@ void interpret(ASTNode *root)
         }
         else if (statement->type == CODEBLOCK_NODE)
         {
-            next_statement = statement->first_child;
+            down = statement->first_child;
         }
         else if (statement->type == IF_NODE)
         {
@@ -245,7 +243,7 @@ void interpret(ASTNode *root)
             Value *value = evaluate(condition);
             if (is_truthy(value))
             {
-                next_statement = body;
+                down = body;
             }
         }
         else if (statement->type == WHILE_NODE)
@@ -255,7 +253,7 @@ void interpret(ASTNode *root)
             Value *value = evaluate(condition);
             if (is_truthy(value))
             {
-                next_statement = body;
+                down = body;
             }
         }
         else if (statement->type == PIPE_NODE)
@@ -263,25 +261,38 @@ void interpret(ASTNode *root)
             printf("Wow, a pipe!\n");
         }
                 
-        while (!next_statement)
+        ASTNode *next = 0;
+        if (down)
         {
-            statement = statement->parent;
-            
-            if (statement == root)
+            next = down;
+        }
+
+        ASTNode *node = statement;
+        while (!next && !done)
+        {
+            if (node == root)
             {
                 done = 1;
-                break;
             }
-            
-            if (statement->type == WHILE_NODE)
+            else if (node->next_sibling)
             {
-                next_statement = statement;
-                break;
+                next = node->next_sibling;
             }
-
-            next_statement = statement->next_sibling;
+            else
+            {
+                ASTNode *parent = node->parent;
+                if (parent->type == WHILE_NODE)
+                {
+                    next = parent;
+                }
+                else
+                {
+                    node = parent;
+                }
+            }
         }
-        statement = next_statement;
+
+        statement = next;
     }
 }
 
