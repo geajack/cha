@@ -1,18 +1,13 @@
-print "Program begins"
 {
     set a = 0
     while a < 10
     {
         set a = a + 1
-        print "a: " + a
+        print a
     }
-    print "Done!"
 } | {
-    set b = 0
-    while b < 10
+    while haveinput()
     {
-        set b = b + 1
-        print "b: " + b
+        print "read: " + readline()
     }
-    print "Done!"
 }

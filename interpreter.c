@@ -334,6 +334,8 @@ void resume_execution(InterpreterThread *thread)
         }
 
         statement = next;
+
+        done = 1;
     }
 
     thread->current = statement;

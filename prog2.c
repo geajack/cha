@@ -1,20 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void readline(char *buffer)
+int readline(char *buffer)
 {
     int i = 0;
     while (1)
     {
-        char c = getc(stdin);
+        int c = getc(stdin);
 
-        if (c == '\n')
+        if (c == '\n' || c == EOF)
         {
             buffer[i] = 0;
-            return;
+            return c;
         }
 
-        buffer[i++] = c;
+        buffer[i] = c;
+        i += 1;
     }    
 }
 
@@ -22,15 +23,12 @@ int main()
 {
     int n = 0;
     char buffer[1024];
-    size_t length = 1024;
     while (1)
     {
-        // FILE *f = fopen("n", "r");
-        // fscanf(f, "%d", &n);
-        // fclose(f);
+        int stop_character = readline(buffer);
         n += 1;
 
-        readline(buffer);
-        printf("%d: %s\n", n, buffer);
+        if (stop_character == EOF) break;
+        printf("Read %d lines\n", n);
     }
 }
