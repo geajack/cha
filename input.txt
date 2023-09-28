@@ -1,17 +1,18 @@
-set n = 0
 print "Program begins"
 {
-    while n < 10
+    set a = 0
+    while a < 10
     {
-        set n = n + 1
-        print n
+        set a = a + 1
+        print "a: " + a
     }
     print "Done!"
 } | {
-    while n < 20
+    set b = 0
+    while b < 10
     {
-        set n = n + 1
-        print n
+        set b = b + 1
+        print "b: " + b
     }
     print "Done!"
 }

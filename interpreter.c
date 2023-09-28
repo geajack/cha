@@ -3,6 +3,20 @@
 
 #include "parser.c"
 
+struct InterpreterThread
+{
+    ASTNode *root;
+    ASTNode *current;
+    int n_pending_children;
+    int finished;
+    struct InterpreterThread *parent;
+};
+
+typedef struct InterpreterThread InterpreterThread;
+
+InterpreterThread thread_pool[64];
+int n_threads = 0;
+
 enum ValueType
 {
     VALUE_TYPE_STRING,
@@ -79,6 +93,8 @@ Value *lookup_symbol(char *name)
         char *symbol_name = symbol_table[i].name;
         if (streq(symbol_name, name)) return symbol_table[i].value;
     }
+
+    printf("ERROR: Undefined variable \"%s\"\n", name);
     return 0;
 }
 
@@ -112,6 +128,13 @@ Value *evaluate(ASTNode *expression)
             int sum = left->integer_value + right->integer_value;
             result = alloc_value(VALUE_TYPE_NUMBER);
             result->integer_value = sum;
+        }
+        else if (left->type == VALUE_TYPE_STRING && right->type == VALUE_TYPE_NUMBER)
+        {
+            char buffer[256];
+            sprintf(buffer, "%s%d",left->string_value, right->integer_value);
+            result = alloc_value(VALUE_TYPE_STRING);
+            result->string_value = save_string_to_heap(buffer);
         }
     }
     else if (type == MULTIPLY_NODE)
@@ -194,10 +217,22 @@ int is_truthy(Value *value)
     return 0;
 }
 
-void interpret(ASTNode *root)
+void spawn_child_thread(InterpreterThread *thread, ASTNode *root)
+{
+    thread_pool[n_threads].root = root;
+    thread_pool[n_threads].current = root;
+    thread_pool[n_threads].n_pending_children = 0;
+    thread_pool[n_threads].finished = 0;
+    thread_pool[n_threads].parent = thread;
+
+    thread->n_pending_children += 1;
+    n_threads += 1;
+}
+
+void resume_execution(InterpreterThread *thread)
 {
     int done = 0;
-    ASTNode *statement = root->first_child;
+    ASTNode *statement = thread->current;
     while (!done)
     {
         ASTNode *down = 0;
@@ -260,8 +295,9 @@ void interpret(ASTNode *root)
         {
             ASTNode *left = statement->first_child;
             ASTNode *right = statement->first_child->next_sibling;
-            interpret(left);
-            interpret(right);
+            spawn_child_thread(thread, left);
+            spawn_child_thread(thread, right);
+            done = 1;
         }
                 
         ASTNode *next = 0;
@@ -271,11 +307,13 @@ void interpret(ASTNode *root)
         }
 
         ASTNode *node = statement;
-        while (!next && !done)
+        while (!next)
         {
-            if (node == root)
+            if (node == thread->root)
             {
+                thread->finished = 1;
                 done = 1;
+                break;
             }
             else if (node->next_sibling)
             {
@@ -297,6 +335,43 @@ void interpret(ASTNode *root)
 
         statement = next;
     }
+
+    thread->current = statement;
+}
+
+void run_program(ASTNode *program)
+{
+    thread_pool[0].root = program;
+    thread_pool[0].current = program;
+    thread_pool[0].n_pending_children = 0;
+    thread_pool[0].finished = 0;
+    n_threads = 1;
+
+    int done = 0;
+    while (!done)
+    {
+        int executed_anything = 0;
+        for (int i = 0; i < n_threads; i++)
+        {
+            InterpreterThread *thread = &thread_pool[i];
+            
+            if (thread->n_pending_children > 0)
+            {
+                continue;
+            }
+
+            if (thread->finished)
+            {
+                thread->parent->n_pending_children -= 1;
+                continue;
+            }
+
+            resume_execution(thread);
+            executed_anything = 1;
+        }
+
+        if (!executed_anything) done = 1;
+    }
 }
 
 char input[1024 * 1024];
@@ -312,7 +387,7 @@ int main(int argc, char **argv)
     if (argc > 1) if (argv[1][0] == 't') do_interpret = 0;
 
     if (do_interpret)
-        interpret(program);
+        run_program(program);
     else
         print_ast(program);
 
