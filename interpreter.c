@@ -258,7 +258,10 @@ void interpret(ASTNode *root)
         }
         else if (statement->type == PIPE_NODE)
         {
-            printf("Wow, a pipe!\n");
+            ASTNode *left = statement->first_child;
+            ASTNode *right = statement->first_child->next_sibling;
+            interpret(left);
+            interpret(right);
         }
                 
         ASTNode *next = 0;
