@@ -11,7 +11,7 @@ int streq(const char *a, const char *b)
 char *save_string_to_heap(char *string)
 {
     int length = strlen(string);
-    char *memory = (char*) malloc(length);
+    char *memory = (char*) malloc(length + 1);
     strcpy(memory, string);
     return memory;
 }
