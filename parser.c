@@ -256,6 +256,7 @@ ASTNode *parser_consume_statement(Parser *parser)
 
             statement->first_child = condition;
 
+            lexer_backtrack_and_go_again(lexer, 1);
             ASTNode *body = 0;
             while (!body)
             {
@@ -280,6 +281,7 @@ ASTNode *parser_consume_statement(Parser *parser)
 
             statement->first_child = condition;
 
+            lexer_backtrack_and_go_again(lexer, 1);
             ASTNode *body = 0;
             while (!body)
             {
