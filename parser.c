@@ -56,11 +56,31 @@ ASTNode *parser_consume_expression(Parser *parser, int precedence)
         {
             if (token_type == TOKEN_TYPE_NAME)
             {
-                expression->type = NAME_NODE;
-                expression->name = save_string_to_heap(token->text);
+                char *name = save_string_to_heap(token->text);
+                lexer_next_language_token(parser->lexer);
+
+                if (parser->lexer->token.type == TOKEN_TYPE_PARENOPEN)
+                {
+                    // must be a function call                    
+                    lexer_next_language_token(parser->lexer); // consume open paren
+                    if (parser->lexer->token.type != TOKEN_TYPE_PARENCLOSE)
+                    {
+                        // we don't support arguments right now
+                        printf("PARSE ERROR: Function arguments are not supported (parser.c:%d)\n", __LINE__);
+                        return 0;
+                    }
+
+                    lexer_next_language_token(parser->lexer); // consume close paren
+                    expression->type = FUNCTION_CALL_NODE;
+                    expression->name = name;
+                }
+                else
+                {
+                    expression->type = NAME_NODE;
+                    expression->name = name;
+                }
 
                 expecting_op = 1;
-                lexer_next_token(parser->lexer, 0);
             }
             else if (token_type == TOKEN_TYPE_STRING)
             {

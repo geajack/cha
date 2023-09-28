@@ -6,8 +6,11 @@
         print a
     }
 } | {
-    while haveinput()
+    set exit = false
+    while 1
     {
-        print "read: " + readline()
+        set line = readline()
+        if line
+            print "read: " + line
     }
 }

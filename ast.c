@@ -10,6 +10,7 @@ enum ASTNodeType
     IF_NODE,
     WHILE_NODE,
     HOST_NODE,
+    FUNCTION_CALL_NODE,
     ADD_NODE,
     MULTIPLY_NODE,
     LESSTHAN_NODE,
@@ -83,6 +84,10 @@ void print_ast_indented(ASTNode *tree, int indent)
 
         case HOST_NODE:
             printf("HOST");
+        break;
+
+        case FUNCTION_CALL_NODE:
+            printf("FUNCCALL [%s]", tree->name);
         break;
 
         case ADD_NODE:
