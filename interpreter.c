@@ -1,7 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "parser.c"
+
+struct PipeBuffer
+{
+    char data[1024];
+    int write_offset;
+    int read_offset;
+    int overflow_flag;
+};
+
+typedef struct PipeBuffer PipeBuffer;
+
+PipeBuffer pipe_buffers[1];
 
 struct InterpreterThread
 {
@@ -10,6 +23,8 @@ struct InterpreterThread
     int n_pending_children;
     int finished;
     struct InterpreterThread *parent;
+    PipeBuffer *write_pipe;
+    PipeBuffer *read_pipe;
 };
 
 typedef struct InterpreterThread InterpreterThread;
@@ -212,25 +227,71 @@ Value *evaluate(ASTNode *expression)
     return result;
 }
 
-void print(Value *value)
+void print(InterpreterThread *context, Value *value)
 {
+    char temp[256];
+
     if (value->type == VALUE_TYPE_STRING)
     {
-        printf("%s\n", value->string_value);
+        sprintf(temp, "%s\n", value->string_value);
     }
     else if (value->type == VALUE_TYPE_NUMBER)
     {
-        printf("%d\n", value->integer_value);
+        sprintf(temp, "%d\n", value->integer_value);
     }
     else if (value->type == VALUE_TYPE_BOOLEAN)
     {
         if (value->boolean_value)
         {
-            printf("true\n");
+            sprintf(temp, "true\n");
         }
         else
         {
-            printf("false\n");
+            sprintf(temp, "false\n");
+        }
+    }
+
+    if (context->write_pipe == 0)
+    {
+        printf("%s", temp);
+    }
+    else
+    {
+        const int read_offset = context->write_pipe->read_offset;
+        int buffer_offset = context->write_pipe->write_offset;
+        int source_offset = 0;
+        int source_length = strlen(temp);
+        
+        int allowed_to_write = 1;
+        int is_data_left = source_offset < source_length - 1;
+        while (allowed_to_write && is_data_left)
+        {
+            if (context->write_pipe->overflow_flag && buffer_offset >= read_offset)
+            {
+                allowed_to_write = 0;
+            }
+            else
+            {
+                char *destination = &context->write_pipe->data[buffer_offset];
+                *destination = temp[source_offset];
+                source_offset += 1;
+                is_data_left = source_offset < source_length - 1;
+
+                buffer_offset += 1;
+                if (buffer_offset >= sizeof(context->write_pipe->data))
+                {
+                    buffer_offset = 0;
+                    context->write_pipe->overflow_flag = 1;
+                }
+            }
+        }
+
+        context->write_pipe->write_offset = buffer_offset;
+
+        if (is_data_left)
+        {
+            // error
+            printf("ERROR: Buffer overflow (interpreter.c:%d)\n", __LINE__);
         }
     }
 }
@@ -264,16 +325,19 @@ int is_truthy(Value *value)
     return 0;
 }
 
-void spawn_child_thread(InterpreterThread *thread, ASTNode *root)
+InterpreterThread *spawn_child_thread(InterpreterThread *thread, ASTNode *root)
 {
     thread_pool[n_threads].root = root;
     thread_pool[n_threads].current = root;
     thread_pool[n_threads].n_pending_children = 0;
     thread_pool[n_threads].finished = 0;
     thread_pool[n_threads].parent = thread;
-
+    
+    InterpreterThread *child = &thread_pool[n_threads];
     thread->n_pending_children += 1;
     n_threads += 1;
+
+    return child;
 }
 
 void resume_execution(InterpreterThread *thread)
@@ -291,7 +355,7 @@ void resume_execution(InterpreterThread *thread)
         else if (statement->type == PRINT_NODE)
         {
             Value *value = evaluate(statement->first_child);
-            print(value);
+            print(thread, value);
         }
         else if (statement->type == SET_NODE)
         {
@@ -342,8 +406,9 @@ void resume_execution(InterpreterThread *thread)
         {
             ASTNode *left = statement->first_child;
             ASTNode *right = statement->first_child->next_sibling;
-            spawn_child_thread(thread, left);
-            spawn_child_thread(thread, right);
+            InterpreterThread *left_thread = spawn_child_thread(thread, left);
+            InterpreterThread *right_thread = spawn_child_thread(thread, right);
+            left_thread->write_pipe = &pipe_buffers[0];
             done = 1;
         }
                 
@@ -390,11 +455,17 @@ void resume_execution(InterpreterThread *thread)
 
 void run_program(ASTNode *program)
 {
+    pipe_buffers[0].write_offset = 0;
+    pipe_buffers[0].read_offset = 0;
+    pipe_buffers[0].overflow_flag = 0;
+
     thread_pool[0].root = program;
     thread_pool[0].current = program;
     thread_pool[0].n_pending_children = 0;
     thread_pool[0].finished = 0;
     thread_pool[0].parent = 0;
+    thread_pool[0].write_pipe = 0;
+    thread_pool[0].read_pipe = 0;
     n_threads = 1;
 
     int done = 0;

@@ -1,9 +1,1 @@
-{ print "hello" } | {
-    set line = true
-    while line
-    {
-        set line = readline()
-        if line
-            print "read: " + line
-    }
-}
+while true print "hello" | while true set _ = readline()
