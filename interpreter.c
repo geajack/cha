@@ -258,6 +258,10 @@ void interpret(ASTNode *root)
                 next_statement = body;
             }
         }
+        else if (statement->type == PIPE_NODE)
+        {
+            printf("Wow, a pipe!\n");
+        }
                 
         while (!next_statement)
         {

@@ -3,4 +3,4 @@ while n < 10
 {
     set n = n + 1
     print n
-}
+} # | {}
