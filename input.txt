@@ -1,6 +1,6 @@
-set i = 0
-while i < 10
+set n = 0
+while n < 10
 {
-    print i
-    set i = i + 1
-} | wc -l
+    set n = n + 1
+    print n
+}
