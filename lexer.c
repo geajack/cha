@@ -44,6 +44,7 @@ enum TokenType
     TOKEN_TYPE_OPADD,
     TOKEN_TYPE_OPMULTIPLY,
     TOKEN_TYPE_OPLESSTHAN,
+    TOKEN_TYPE_OPEQUALS,
     TOKEN_TYPESET_OP_LAST,
     
     TOKEN_TYPE_PIPE,
@@ -305,8 +306,17 @@ int lexer_next_token(Lexer *lexer, int shell_mode)
                 }
                 else if (c == '=')
                 {
-                    token->type = TOKEN_TYPE_OPASSIGN;
                     lexer_consume(lexer);
+                    LexerChar c = lexer_peek(lexer);
+                    if (c == '=')
+                    {
+                        token->type = TOKEN_TYPE_OPEQUALS;
+                    }
+                    else
+                    {
+                        token->type = TOKEN_TYPE_OPASSIGN;
+                    }
+
                     return 1;
                 }
                 else if (c == '+')

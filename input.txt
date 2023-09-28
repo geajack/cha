@@ -1,13 +1,6 @@
 {
-    set a = 0
-    while a < 10
-    {
-        set a = a + 1
-        print a
-    }
-} | {
-    set exit = false
-    while 1
+    set line = true
+    while line
     {
         set line = readline()
         if line

@@ -14,6 +14,7 @@ enum ASTNodeType
     ADD_NODE,
     MULTIPLY_NODE,
     LESSTHAN_NODE,
+    EQUALS_NODE,
     PIPE_NODE,
     NAME_NODE,
     NUMBER_NODE,
@@ -100,6 +101,10 @@ void print_ast_indented(ASTNode *tree, int indent)
 
         case LESSTHAN_NODE:
             printf("LESS THAN");
+        break;
+
+        case EQUALS_NODE:
+            printf("EQUALS");
         break;
 
         case PIPE_NODE:

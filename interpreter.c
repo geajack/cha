@@ -73,6 +73,30 @@ void set_symbol(char *name, Value *value)
     if (i == n_symbols) n_symbols += 1;
 }
 
+int n_lines_remaining = 5;
+Value *readline()
+{
+    Value *value = alloc_value(VALUE_TYPE_STRING);
+    char buffer[128];
+    n_lines_remaining -= 1;
+    if (n_lines_remaining > 1)
+    {
+        sprintf(buffer, "there are %d lines remaining", n_lines_remaining);
+        value->string_value = save_string_to_heap(buffer);
+    }
+    else if (n_lines_remaining == 1)
+    {
+        value->string_value = "there is 1 line remaining";
+    }
+    else
+    {
+        n_lines_remaining = 0;
+        value->type = VALUE_TYPE_BOOLEAN;
+        value->boolean_value = 0;
+    }
+    return value;
+}
+
 Value *lookup_symbol(char *name)
 {
     if (streq(name, "true"))
@@ -118,6 +142,17 @@ Value *evaluate(ASTNode *expression)
         result = alloc_value(VALUE_TYPE_STRING);
         result->string_value = expression->string;
     }
+    else if (type == FUNCTION_CALL_NODE)
+    {
+        if (streq(expression->name, "readline"))
+        {
+            result = readline();
+        }
+        else
+        {
+            printf("PARSE ERROR: Unknown function \"%s\" (parser.c:%d)\n", expression->name, __LINE__);
+        }
+    }
     else if (type == ADD_NODE)
     {
         Value *left = evaluate(expression->first_child);
@@ -135,6 +170,18 @@ Value *evaluate(ASTNode *expression)
             sprintf(buffer, "%s%d",left->string_value, right->integer_value);
             result = alloc_value(VALUE_TYPE_STRING);
             result->string_value = save_string_to_heap(buffer);
+        }
+        else if (left->type == VALUE_TYPE_STRING && right->type == VALUE_TYPE_STRING)
+        {
+            char buffer[256];
+            sprintf(buffer, "%s%s",left->string_value, right->string_value);
+            result = alloc_value(VALUE_TYPE_STRING);
+            result->string_value = save_string_to_heap(buffer);
+        }
+
+        if (!result)
+        {
+            printf("ERROR: Unable to perform addition operation (parser.c:%d)\n", __LINE__);
         }
     }
     else if (type == MULTIPLY_NODE)
@@ -347,6 +394,7 @@ void run_program(ASTNode *program)
     thread_pool[0].current = program;
     thread_pool[0].n_pending_children = 0;
     thread_pool[0].finished = 0;
+    thread_pool[0].parent = 0;
     n_threads = 1;
 
     int done = 0;
@@ -364,7 +412,10 @@ void run_program(ASTNode *program)
 
             if (thread->finished)
             {
-                thread->parent->n_pending_children -= 1;
+                if (thread->parent)
+                {
+                    thread->parent->n_pending_children -= 1;
+                }
                 continue;
             }
 
