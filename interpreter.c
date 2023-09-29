@@ -103,27 +103,44 @@ void set_symbol(char *name, Value *value)
     if (i == n_symbols) n_symbols += 1;
 }
 
-int n_lines_remaining = 5;
-Value *readline()
+Value *readline(InterpreterThread *context)
 {
     Value *value = alloc_value(VALUE_TYPE_STRING);
     char buffer[128];
-    n_lines_remaining -= 1;
-    if (n_lines_remaining > 1)
+    
+    int j = 0;
+    int i = context->read_pipe->read_offset;
+    char *data = context->read_pipe->data;
+    int is_more_data = 1;
+    while (is_more_data)
     {
-        sprintf(buffer, "there are %d lines remaining", n_lines_remaining);
-        value->string_value = save_string_to_heap(buffer);
+        char c = data[i];
+        buffer[j] = c;
+        j += 1;
+
+        if (c == '\n')
+        {
+            break;
+        }
+
+        i += 1;
+
+        if (i == context->read_pipe->write_offset)
+        {
+            is_more_data = context->read_pipe->overflow_flag;
+        }
+
+        if (i >= sizeof(context->read_pipe->data))
+        {
+            i = 0;
+            context->read_pipe->overflow_flag = 0;
+        }
     }
-    else if (n_lines_remaining == 1)
-    {
-        value->string_value = "there is 1 line remaining";
-    }
-    else
-    {
-        n_lines_remaining = 0;
-        value->type = VALUE_TYPE_BOOLEAN;
-        value->boolean_value = 0;
-    }
+
+    context->read_pipe->read_offset = i;
+
+    value->string_value = save_string_to_heap(buffer);
+
     return value;
 }
 
@@ -409,6 +426,7 @@ void resume_execution(InterpreterThread *thread)
                 InterpreterThread *left_thread = spawn_child_thread(thread, left);
                 InterpreterThread *right_thread = spawn_child_thread(thread, right);
                 left_thread->write_pipe = &pipe_buffers[0];
+                right_thread->read_pipe = &pipe_buffers[0];
                 done = 1;
             }
             else if (current_node->type == NUMBER_NODE)
@@ -429,7 +447,7 @@ void resume_execution(InterpreterThread *thread)
             {
                 if (streq(current_node->name, "readline"))
                 {
-                    thread->returned_value = readline();
+                    thread->returned_value = readline(thread);
                 }
                 else
                 {
