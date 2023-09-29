@@ -36,6 +36,7 @@ struct InterpreterThread
     ASTNode *current;
     EvaluationContext context_stack[32];
     int context_stack_size;
+    struct Value *returned_value;
 
     PipeBuffer *write_pipe;
     PipeBuffer *read_pipe;
@@ -347,6 +348,7 @@ InterpreterThread *spawn_child_thread(InterpreterThread *parent, ASTNode *root)
     thread_pool[n_threads].finished = 0;
     thread_pool[n_threads].parent = parent;
     thread_pool[n_threads].context_stack_size = 0;
+    thread_pool[n_threads].returned_value = 0;
     
     InterpreterThread *child = &thread_pool[n_threads];
     if (parent)
@@ -361,14 +363,13 @@ InterpreterThread *spawn_child_thread(InterpreterThread *parent, ASTNode *root)
 void resume_execution(InterpreterThread *thread)
 {
     int done = 0;
-    Value *returned_value = 0;
     ASTNode *current_node = thread->current;
     while (!done)
     {
         ASTNode *down = 0;
 
-        int current_context_is_mine = returned_value != 0;
-        if (!returned_value)
+        int current_context_is_mine = thread->returned_value != 0;
+        if (!thread->returned_value)
         {
             int n_required_values = 0;
             switch (current_node->type)
@@ -408,10 +409,10 @@ void resume_execution(InterpreterThread *thread)
         if (current_context_is_mine)
         {
             // push value to context
-            if (returned_value)
+            if (thread->returned_value)
             {
                 int n = context->n_values_filled;
-                context->values[n] = returned_value;
+                context->values[n] = thread->returned_value;
                 context->n_values_filled += 1;
             }
 
@@ -427,7 +428,7 @@ void resume_execution(InterpreterThread *thread)
             }
         }
 
-        returned_value = 0;
+        thread->returned_value = 0;
 
         if (execute_current_node)
         {
@@ -494,6 +495,15 @@ void resume_execution(InterpreterThread *thread)
                 left_thread->write_pipe = &pipe_buffers[0];
                 done = 1;
             }
+            else if (current_node->type == NUMBER_NODE)
+            {
+                thread->returned_value = alloc_value(VALUE_TYPE_NUMBER);
+                thread->returned_value->integer_value = current_node->number;
+            }
+            else if (current_node->type == NAME_NODE)
+            {
+                thread->returned_value = lookup_symbol(current_node->name);
+            }
             else
             {
                 printf("ERROR: Unimplemented AST node\n");
@@ -504,6 +514,11 @@ void resume_execution(InterpreterThread *thread)
         if (down)
         {
             next = down;
+        }
+
+        if (thread->returned_value)
+        {
+            next = current_node->parent;
         }
 
         ASTNode *node = current_node;
