@@ -1,7 +1,14 @@
+set n = 0
+
 while true
 {
     print "hello"
-} | while true
-{
-    print "from another thread: " + readline()
+    set n = n + 1
+} | {
+    print readline() + " from another thread"
+    print readline() + " from another thread"
+    print readline() + " from another thread"
+    print readline() + " from another thread"
+    print readline() + " from another thread"
+    print readline() + " from another thread"
 }

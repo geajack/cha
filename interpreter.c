@@ -4,9 +4,11 @@
 
 #include "parser.c"
 
+const int PIPE_BUFFER_SIZE = 1024;
+
 struct PipeBuffer
 {
-    char data[128];
+    char data[PIPE_BUFFER_SIZE];
     int write_offset;
     int read_offset;
     int overflow_flag;
@@ -155,7 +157,6 @@ void set_symbol(char *name, Value *value)
 
 Value *readline(InterpreterThread *context)
 {
-    Value *value = alloc_value(VALUE_TYPE_STRING);
     char buffer[128];
     
     int j = 0;
@@ -186,10 +187,17 @@ Value *readline(InterpreterThread *context)
         }
     }
 
+    if (!is_more_data)
+    {
+        // we ran out of data looking for a newline
+        return 0;
+    }
+
     buffer[j] = 0;
 
     context->read_pipe->read_offset = i;
 
+    Value *value = alloc_value(VALUE_TYPE_STRING);
     value->string_value = save_string_to_heap(buffer);
 
     return value;
@@ -220,7 +228,8 @@ Value *lookup_symbol(char *name)
     return 0;
 }
 
-void print(InterpreterThread *context, Value *value)
+// incomplete: this never returns 0 if it's outputting to stdout, but probably stdout can get clogged too?
+int print(InterpreterThread *context, Value *value)
 {
     char temp[256];
 
@@ -251,6 +260,29 @@ void print(InterpreterThread *context, Value *value)
     else
     {
         const int read_offset = context->write_pipe->read_offset;
+
+        {
+            const int write_offset = context->write_pipe->write_offset;
+            const int is_overflow = context->write_pipe->overflow_flag;
+
+            int n_bytes_of_space;
+            if (is_overflow)
+            {
+                n_bytes_of_space = read_offset - write_offset;
+            }
+            else
+            {
+                int n_available_before_wraparound = PIPE_BUFFER_SIZE - write_offset;
+                int n_available_after_wraparound = read_offset;
+                n_bytes_of_space = n_available_before_wraparound + n_available_after_wraparound;
+            }
+
+            if (strlen(temp) > n_bytes_of_space)
+            {
+                return 0;
+            }
+        }
+
         int buffer_offset = context->write_pipe->write_offset;
         int source_offset = 0;
         int source_length = strlen(temp);
@@ -283,10 +315,12 @@ void print(InterpreterThread *context, Value *value)
 
         if (is_data_left)
         {
-            // error
+            // error - should never happen since we make sure we have enough space before writing
             printf("ERROR: Buffer overflow (interpreter.c:%d)\n", __LINE__);
         }
     }
+
+    return 1;
 }
 
 void execute_host_program(char *program, char **arguments, int n_arguments)
@@ -384,9 +418,12 @@ void resume_execution(InterpreterThread *thread)
 
         EvaluationContext *context = &thread->context_stack[thread->context_stack_size - 1];        
 
+        int do_pop_context = 0;
         int execute_current_node = 1;
         if (current_context_is_mine)
         {
+            do_pop_context = 1;
+
             // push value to context
             if (thread->returned_value)
             {
@@ -399,6 +436,7 @@ void resume_execution(InterpreterThread *thread)
             int need = context->n_values_needed;
             if (have < need)
             {
+                do_pop_context = 0;
                 execute_current_node = 0;
                 if (context->previous_child)
                     down = context->previous_child->next_sibling;
@@ -406,10 +444,6 @@ void resume_execution(InterpreterThread *thread)
                     down = current_node->first_child;
 
                 context->previous_child = down;
-            }
-            else
-            {
-                thread->context_stack_size -= 1; // pop context stack
             }
         }
 
@@ -424,7 +458,13 @@ void resume_execution(InterpreterThread *thread)
             else if (current_node->type == PRINT_NODE)
             {
                 Value *value = context->values[0];
-                print(thread, value);
+                int success = print(thread, value);
+                if (!success)
+                {
+                    // pipe is full - we have to retry later
+                    down = current_node;
+                    do_pop_context = 1;
+                }
             }
             else if (current_node->type == SET_NODE)
             {
@@ -478,7 +518,7 @@ void resume_execution(InterpreterThread *thread)
                 InterpreterThread *right_thread = spawn_child_thread(thread, right);
                 left_thread->write_pipe = &pipe_buffers[0];
                 right_thread->read_pipe = &pipe_buffers[0];
-                print_pipe_state(&pipe_buffers[0]);
+                // print_pipe_state(&pipe_buffers[0]);
                 done = 1;
             }
             else if (current_node->type == NUMBER_NODE)
@@ -499,7 +539,17 @@ void resume_execution(InterpreterThread *thread)
             {
                 if (streq(current_node->name, "readline"))
                 {
-                    thread->returned_value = readline(thread);
+                    Value *value = readline(thread);
+                    if (value)
+                    {
+                        thread->returned_value = value;
+                    }
+                    else
+                    {
+                        // not enough data - we need to try again later
+                        down = current_node;
+                        do_pop_context = 0;
+                    }
                 }
                 else
                 {
@@ -574,7 +624,12 @@ void resume_execution(InterpreterThread *thread)
                 printf("ERROR: Unimplemented AST node (%s:%d)\n", __FILE__, __LINE__);
             }
         }
-                
+
+        if (do_pop_context)
+        {
+            thread->context_stack_size -= 1;
+        }
+
         ASTNode *next = 0;
         if (down)
         {
