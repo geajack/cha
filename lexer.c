@@ -106,7 +106,8 @@ int lexer_next_token(Lexer *lexer, int shell_mode)
             LexerChar c = lexer_consume(lexer);
             while (c != '\n' && c != LexerEOF)
             {
-                c = lexer_consume(lexer);
+                lexer_consume(lexer);
+                c = lexer_peek(lexer);
             }
         }
         else if (c == '\'' || c == '"')
