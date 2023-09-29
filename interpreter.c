@@ -192,9 +192,6 @@ Value *readline(InterpreterThread *context)
 
     value->string_value = save_string_to_heap(buffer);
 
-    printf("READ\n");
-    print_pipe_state(context->read_pipe);
-
     return value;
 }
 
@@ -249,7 +246,7 @@ void print(InterpreterThread *context, Value *value)
 
     if (context->write_pipe == 0)
     {
-        // printf("%s", temp);
+        printf("%s", temp);
     }
     else
     {
@@ -289,8 +286,6 @@ void print(InterpreterThread *context, Value *value)
             // error
             printf("ERROR: Buffer overflow (interpreter.c:%d)\n", __LINE__);
         }
-        printf("WRITE\n");
-        print_pipe_state(context->write_pipe);
     }
 }
 
