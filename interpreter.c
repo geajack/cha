@@ -367,6 +367,7 @@ void resume_execution(InterpreterThread *thread)
     {
         ASTNode *down = 0;
 
+        int current_context_is_mine = returned_value != 0;
         if (!returned_value)
         {
             int n_required_values = 0;
@@ -394,28 +395,35 @@ void resume_execution(InterpreterThread *thread)
             {
                 // push context                
                 thread->context_stack[thread->context_stack_size].n_values_needed = n_required_values;
-                thread->context_stack[thread->context_stack_size].previous_child = current_node->first_child;
+                thread->context_stack[thread->context_stack_size].previous_child = 0;
                 thread->context_stack_size += 1;
+
+                current_context_is_mine = 1;
             }
         }
 
+        EvaluationContext *context = &thread->context_stack[thread->context_stack_size - 1];        
+
         int execute_current_node = 1;
-        if (thread->context_stack_size > 0)
+        if (current_context_is_mine)
         {
             // push value to context
             if (returned_value)
             {
-                int n = thread->context_stack[thread->context_stack_size].n_values_filled;
-                thread->context_stack[thread->context_stack_size].values[n] = returned_value;
-                thread->context_stack[thread->context_stack_size].n_values_filled += 1;
+                int n = context->n_values_filled;
+                context->values[n] = returned_value;
+                context->n_values_filled += 1;
             }
 
-            int have = thread->context_stack[thread->context_stack_size].n_values_filled;
-            int need = thread->context_stack[thread->context_stack_size].n_values_needed;
+            int have = context->n_values_filled;
+            int need = context->n_values_needed;
             if (have < need)
             {
-                execute_current_node = 1;
-                down = thread->context_stack[thread->context_stack_size].previous_child->next_sibling;
+                execute_current_node = 0;
+                if (context->previous_child)
+                    down = context->previous_child->next_sibling;
+                else
+                    down = current_node->first_child;
             }
         }
 
@@ -436,7 +444,7 @@ void resume_execution(InterpreterThread *thread)
             {
                 char *name = current_node->first_child->next_sibling->name;
                 ASTNode *rhs = current_node->first_child;
-                Value *value = evaluate(rhs);
+                Value *value = context->values[0];
                 set_symbol(name, value);
             }
             else if (current_node->type == HOST_NODE)
