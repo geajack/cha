@@ -396,6 +396,7 @@ void resume_execution(InterpreterThread *thread)
             {
                 // push context                
                 thread->context_stack[thread->context_stack_size].n_values_needed = n_required_values;
+                thread->context_stack[thread->context_stack_size].n_values_filled = 0;
                 thread->context_stack[thread->context_stack_size].previous_child = 0;
                 thread->context_stack_size += 1;
 
@@ -521,6 +522,41 @@ void resume_execution(InterpreterThread *thread)
                     thread->returned_value = alloc_value(VALUE_TYPE_NUMBER);
                     thread->returned_value->integer_value = product;
                 }
+            }
+            else if (current_node->type == ADD_NODE)
+            {
+                Value *left = context->values[0];
+                Value *right = context->values[1];
+
+                Value *result;
+
+                if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
+                {
+                    int sum = left->integer_value + right->integer_value;
+                    result = alloc_value(VALUE_TYPE_NUMBER);
+                    result->integer_value = sum;
+                }
+                else if (left->type == VALUE_TYPE_STRING && right->type == VALUE_TYPE_NUMBER)
+                {
+                    char buffer[256];
+                    sprintf(buffer, "%s%d",left->string_value, right->integer_value);
+                    result = alloc_value(VALUE_TYPE_STRING);
+                    result->string_value = save_string_to_heap(buffer);
+                }
+                else if (left->type == VALUE_TYPE_STRING && right->type == VALUE_TYPE_STRING)
+                {
+                    char buffer[256];
+                    sprintf(buffer, "%s%s",left->string_value, right->string_value);
+                    result = alloc_value(VALUE_TYPE_STRING);
+                    result->string_value = save_string_to_heap(buffer);
+                }
+
+                if (!result)
+                {
+                    printf("ERROR: Unable to perform addition operation (parser.c:%d)\n", __LINE__);
+                }
+
+                thread->returned_value = result;
             }
             else
             {
