@@ -44,7 +44,7 @@ ASTNode *parser_consume_expression(Parser *parser, int precedence)
 {
     Lexer *lexer = parser->lexer;
 
-    ASTNode *expression = alloc_ast_node(PROGRAM_NODE, 0);
+    ASTNode *expression = alloc_ast_node(PROGRAM_NODE);
 
     int done = 0;
     int expecting_op = 0;
@@ -159,15 +159,11 @@ ASTNode *parser_consume_expression(Parser *parser, int precedence)
                     printf("PARSE ERROR: Unexpected operator (parser.c:%d)\n", __LINE__);
                 }
 
-                ASTNode *operation = alloc_ast_node(operator_node_type, 0);
-                operation->first_child = expression;
-                expression->next_sibling = rhs;
+                ASTNode *operation = alloc_ast_node(operator_node_type);                
+                ast_attach_child(operation, expression);
+                ast_attach_sibling(expression, rhs);
 
-                expression->parent = operation;
-                rhs->parent = operation;
-
-                expression = operation;
-                
+                expression = operation;                
                 expecting_op = 1;
             }
             else
@@ -191,7 +187,7 @@ ASTNode *parser_consume_statement(Parser *parser)
     if (lexer->token.type == TOKEN_TYPE_CURLYOPEN)
     {
         lexer_next_shell_token(lexer);
-        statement = alloc_ast_node(CODEBLOCK_NODE, 0);        
+        statement = alloc_ast_node(CODEBLOCK_NODE);        
         parse_statements(parser, statement);
         if (parser->lexer->token.type != TOKEN_TYPE_CURLYCLOSE)
         {
@@ -206,17 +202,17 @@ ASTNode *parser_consume_statement(Parser *parser)
         if(streq(text, "print"))
         {
             // print statement
-            statement = alloc_ast_node(PRINT_NODE, 0);
+            statement = alloc_ast_node(PRINT_NODE);
 
             lexer_next_token(parser->lexer, 0);
             ASTNode *argument = parser_consume_expression(parser, OP_PRECEDENCE_NONE);
             
-            statement->first_child = argument;
+            ast_attach_child(statement, argument);
         }
         else if (streq(text, "set"))
         {
             // set statement
-            statement = alloc_ast_node(SET_NODE, 0);
+            statement = alloc_ast_node(SET_NODE);
 
             lexer_next_language_token(parser->lexer);
 
@@ -226,7 +222,7 @@ ASTNode *parser_consume_statement(Parser *parser)
             }
 
             char *name = save_string_to_heap(parser->lexer->token.text);
-            ASTNode *name_node = alloc_ast_node(NAME_NODE, statement);
+            ASTNode *name_node = alloc_ast_node(NAME_NODE);
             name_node->name = name;
 
             lexer_next_token(parser->lexer, 0);
@@ -239,23 +235,20 @@ ASTNode *parser_consume_statement(Parser *parser)
             lexer_next_token(parser->lexer, 0);
 
             ASTNode *rhs = parser_consume_expression(parser, OP_PRECEDENCE_NONE);
-            rhs->parent = statement;
-            name_node->parent = statement;
-            statement->first_child = rhs; // deliberate - we always pack expressions "to the left".
-                                          // The interpreter depends on this convention.
-            statement->first_child->next_sibling = name_node;
+            ast_attach_child(statement, rhs); // deliberate - we always pack expressions "to the left".
+                                              // The interpreter depends on this convention.
+            ast_attach_sibling(rhs, name_node);
         }
         else if (streq(text, "if"))
         {
             // if statement
-            statement = alloc_ast_node(IF_NODE, 0);
+            statement = alloc_ast_node(IF_NODE);
 
             lexer_next_language_token(parser->lexer);
 
             ASTNode *condition = parser_consume_expression(parser, OP_PRECEDENCE_NONE);
-            condition->parent = statement;
-
-            statement->first_child = condition;
+            
+            ast_attach_child(statement, condition);
 
             lexer_backtrack_and_go_again(lexer, 1);
             ASTNode *body = 0;
@@ -267,20 +260,19 @@ ASTNode *parser_consume_statement(Parser *parser)
                     lexer_next_shell_token(lexer);
                 }
             }
-            condition->next_sibling = body;
-            body->parent = statement;            
+
+            ast_attach_sibling(condition, body);
         }
         else if (streq(text, "while"))
         {
             // while statement
-            statement = alloc_ast_node(WHILE_NODE, 0);
+            statement = alloc_ast_node(WHILE_NODE);
 
             lexer_next_language_token(parser->lexer);
 
             ASTNode *condition = parser_consume_expression(parser, OP_PRECEDENCE_NONE);
-            condition->parent = statement;
-
-            statement->first_child = condition;
+            
+            ast_attach_child(statement, condition);
 
             lexer_backtrack_and_go_again(lexer, 1);
             ASTNode *body = 0;
@@ -292,18 +284,19 @@ ASTNode *parser_consume_statement(Parser *parser)
                     lexer_next_shell_token(lexer);
                 }
             }
-            condition->next_sibling = body;
-            body->parent = statement;
+            
+            ast_attach_sibling(condition, body);
         }
         else
         {
             // host statement
-            statement = alloc_ast_node(HOST_NODE, 0);
+            statement = alloc_ast_node(HOST_NODE);
 
             char *program = save_string_to_heap(text);
-            ASTNode *program_node = alloc_ast_node(RAW_TEXT_NODE, statement);
+            ASTNode *program_node = alloc_ast_node(RAW_TEXT_NODE);
             program_node->string = program;
-            statement->first_child = program_node;
+            
+            ast_attach_child(statement, program_node);
 
             // arguments
             lexer_next_shell_token(parser->lexer);
@@ -315,16 +308,17 @@ ASTNode *parser_consume_statement(Parser *parser)
                 ASTNode *argument;
                 if (t == TOKEN_TYPE_RAW_TEXT)
                 {
-                    argument = alloc_ast_node(RAW_TEXT_NODE, statement);
+                    argument = alloc_ast_node(RAW_TEXT_NODE);
                     argument->string = save_string_to_heap(lexer->token.text);
                 }
                 else
                 {
-                    argument = alloc_ast_node(STRING_NODE, statement);
+                    argument = alloc_ast_node(STRING_NODE);
                     argument->string = save_string_to_heap(lexer->token.text);
                 }
 
-                previous->next_sibling = argument;
+                ast_attach_sibling(previous, argument);
+
                 previous = argument;
 
                 lexer_next_shell_token(parser->lexer);
@@ -334,33 +328,6 @@ ASTNode *parser_consume_statement(Parser *parser)
     }
 
     return statement;
-}
-
-ASTAttachmentPoint *parser_pop(Parser *parser)
-{
-    ASTAttachmentPoint *top = &parser->stack[parser->stack_size - 1];
-    parser->stack_size -= 1;
-    return top;
-}
-
-void parser_push(Parser *parser, ASTNode **node, ASTNode *parent)
-{
-    parser->stack[parser->stack_size].target = node;
-    parser->stack[parser->stack_size].parent = parent;
-    parser->stack_size += 1;
-}
-
-void parser_attach(Parser *parser, ASTNode *node)
-{
-    ASTAttachmentPoint *attach = parser_pop(parser);
-    *(attach->target) = node;
-    node->parent = attach->parent;
-
-    if (!parser->just_opened_if_statement)
-    {
-        parser_push(parser, &node->next_sibling, node->parent);
-    }
-    parser->just_opened_if_statement = 0;
 }
 
 ASTNode *parser_consume_statement_chain(Parser *parser)
@@ -379,9 +346,8 @@ ASTNode *parser_consume_statement_chain(Parser *parser)
         {
             case TOKEN_TYPE_PIPE:
             lexer_next_shell_token(parser->lexer);
-            ASTNode *pipe = alloc_ast_node(PIPE_NODE, 0);
-            pipe->first_child = statement;
-            statement->parent = pipe;
+            ASTNode *pipe = alloc_ast_node(PIPE_NODE);
+            ast_attach_child(pipe, statement);
             statement_or_pipe = pipe;
             break;
 
@@ -402,8 +368,7 @@ ASTNode *parser_consume_statement_chain(Parser *parser)
 
         if (previous)
         {
-            previous->next_sibling = statement_or_pipe;
-            statement_or_pipe->parent = previous->parent;
+            ast_attach_sibling(previous, statement_or_pipe);
         }
         
         previous = statement;
@@ -426,13 +391,12 @@ void parse_statements(Parser *parser, ASTNode *root)
         {
             if (!have_first)
             {
-                previous->first_child = statement_chain;
+                ast_attach_child(previous, statement_chain);
             }
             else
             {
-                previous->next_sibling = statement_chain;
+                ast_attach_sibling(previous, statement_chain);
             }
-            statement_chain->parent = root;
 
             previous = statement_chain;
             have_first = 1;
@@ -443,16 +407,14 @@ void parse_statements(Parser *parser, ASTNode *root)
             case TOKEN_TYPE_CURLYOPEN:
             lexer_next_shell_token(parser->lexer);
 
-            ASTNode *code_block = alloc_ast_node(CODEBLOCK_NODE, 0);            
+            ASTNode *code_block = alloc_ast_node(CODEBLOCK_NODE);            
             if (!have_first)
             {
-                code_block->parent = previous;
-                previous->first_child = code_block;
+                ast_attach_child(previous, code_block);
             }
             else
             {
-                code_block->parent = previous->parent;
-                previous->next_sibling = code_block;
+                ast_attach_sibling(previous, code_block);
             }
 
             parse_statements(parser, code_block);
@@ -488,7 +450,7 @@ ASTNode *parse(char *input, int input_length)
     Parser parser[1];
     parser->lexer = lexer;
 
-    ASTNode *program = alloc_ast_node(PROGRAM_NODE, 0);
+    ASTNode *program = alloc_ast_node(PROGRAM_NODE);
     lexer_next_shell_token(parser->lexer);
     parse_statements(parser, program);
 

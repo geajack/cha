@@ -38,14 +38,25 @@ struct ASTNode
 
 typedef struct ASTNode ASTNode;
 
-ASTNode *alloc_ast_node(enum ASTNodeType type, ASTNode *parent)
+ASTNode *alloc_ast_node(enum ASTNodeType type)
 {
     ASTNode *node = malloc(sizeof(ASTNode));
     node->type = type;
     node->first_child = 0;
     node->next_sibling = 0;
-    node->parent = parent;
     return node;
+}
+
+void ast_attach_child(ASTNode *parent, ASTNode *child)
+{
+    parent->first_child = child;
+    child->parent = parent;
+}
+
+void ast_attach_sibling(ASTNode *older, ASTNode *younger)
+{
+    older->next_sibling = younger;
+    younger->parent = older->parent;
 }
 
 void print_ast_indented(ASTNode *tree, int indent)
