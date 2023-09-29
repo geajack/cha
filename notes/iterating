@@ -1,0 +1,61 @@
+while (!done)
+{
+    node = the dude we're executing this iteration
+
+    first, are we returning here from below and need to re-evaluate expressions, or did we just get here?
+    what this really means is: do we need to push our context, or is it already here?
+    we can tell based on if something just returned a value for us to find (like if our mailbox flag is up or not)
+    so if value is null or if return_flag is unset or something, we just got here and need to push our context
+
+    if (returned value is not available)
+    {
+        okay, we need to push our context!
+
+        how many expressions do we need? determine this based on node type
+            if -> we want one
+            print -> we want one
+            add -> we want two
+            codeblock -> we don't need any (so don't even push a context)
+            etc
+
+        push our context if we need to
+    }
+    else
+    {
+        add value to context
+    }
+
+    now we need to know if our context is satisfied or not, i.e. if we have all the values we need
+    if we don't, we don't need to bother executing our intrinsic logic yet, just descend to the next expression
+    but do we even have a context?
+    we have one either if a returned value is available, or if we just pushed one
+    the only way we would not have one at this point is if we are something like a codeblock that has no context,
+    in which case the stack should be empty
+    so I think the logic is: if the stack is non empty, then at this point the thing at the top must be our context
+
+    execute_intrinsic_logic = 1
+    if (context stack is not empty)
+    {
+        okay, our context is available, we need to know if we have everything we need to execute
+
+        is the number of needed values in this context zero? if so, we're good to go
+        otherwise, descend to the next expression. without returning a value (make sure to clear the flag or whatever),
+        find the "previous" field in the context and tell the instruction pointer to go to previous->next_sibling next
+
+        if context.n_needed > 0
+        {
+            execute_intrinsic_logic = 0
+            next_statement = context.previous->next_sibling
+        }
+    }
+
+    if (execute_intrinsic_logic)
+    {
+        switch on node type
+        {
+            do logic, maybe compute a value to be returned
+        }
+    }
+
+    advance instruction pointer
+}

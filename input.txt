@@ -1,1 +1,2 @@
-while true print "hello" | while true set _ = readline()
+set x = 2 * 5 + 10 * (6 + 3)
+print x # 100

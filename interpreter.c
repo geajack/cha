@@ -16,13 +16,27 @@ typedef struct PipeBuffer PipeBuffer;
 
 PipeBuffer pipe_buffers[1];
 
+struct EvaluationContext
+{
+    struct Value *values[2];
+    int n_values_needed;
+    int n_values_filled;
+    ASTNode *previous_child;
+};
+
+typedef struct EvaluationContext EvaluationContext;
+
 struct InterpreterThread
 {
-    ASTNode *root;
-    ASTNode *current;
+    struct InterpreterThread *parent;
     int n_pending_children;
     int finished;
-    struct InterpreterThread *parent;
+
+    ASTNode *root;
+    ASTNode *current;
+    EvaluationContext context_stack[32];
+    int context_stack_size;
+
     PipeBuffer *write_pipe;
     PipeBuffer *read_pipe;
 };
@@ -325,16 +339,20 @@ int is_truthy(Value *value)
     return 0;
 }
 
-InterpreterThread *spawn_child_thread(InterpreterThread *thread, ASTNode *root)
+InterpreterThread *spawn_child_thread(InterpreterThread *parent, ASTNode *root)
 {
     thread_pool[n_threads].root = root;
     thread_pool[n_threads].current = root;
     thread_pool[n_threads].n_pending_children = 0;
     thread_pool[n_threads].finished = 0;
-    thread_pool[n_threads].parent = thread;
+    thread_pool[n_threads].parent = parent;
+    thread_pool[n_threads].context_stack_size = 0;
     
     InterpreterThread *child = &thread_pool[n_threads];
-    thread->n_pending_children += 1;
+    if (parent)
+    {
+        parent->n_pending_children += 1;
+    }
     n_threads += 1;
 
     return child;
@@ -343,73 +361,135 @@ InterpreterThread *spawn_child_thread(InterpreterThread *thread, ASTNode *root)
 void resume_execution(InterpreterThread *thread)
 {
     int done = 0;
-    ASTNode *statement = thread->current;
+    Value *returned_value = 0;
+    ASTNode *current_node = thread->current;
     while (!done)
     {
         ASTNode *down = 0;
 
-        if (statement->type == PROGRAM_NODE)
+        if (!returned_value)
         {
-            down = statement->first_child;
-        }
-        else if (statement->type == PRINT_NODE)
-        {
-            Value *value = evaluate(statement->first_child);
-            print(thread, value);
-        }
-        else if (statement->type == SET_NODE)
-        {
-            char *name = statement->first_child->name;
-            ASTNode *rhs = statement->first_child->next_sibling;
-            Value *value = evaluate(rhs);
-            set_symbol(name, value);
-        }
-        else if (statement->type == HOST_NODE)
-        {
-            char *program = statement->first_child->string;
-            char *arguments[64];
-            int n_arguments = 0;
-            ASTNode *argument = statement->first_child->next_sibling;
-            while (argument)
+            int n_required_values = 0;
+            switch (current_node->type)
             {
-                arguments[n_arguments] = argument->string;
-                n_arguments += 1;
-                argument = argument->next_sibling;
+                case PRINT_NODE:
+                case SET_NODE:
+                case IF_NODE:
+                case WHILE_NODE:
+                n_required_values = 1;
+                break;
+                
+                case ADD_NODE:
+                case MULTIPLY_NODE:
+                case LESSTHAN_NODE:
+                case EQUALS_NODE:
+                n_required_values = 2;
+                break;
+                
+                default:
+                break;
             }
-            execute_host_program(program, arguments, n_arguments);
-        }
-        else if (statement->type == CODEBLOCK_NODE)
-        {
-            down = statement->first_child;
-        }
-        else if (statement->type == IF_NODE)
-        {
-            ASTNode *condition = statement->first_child;
-            ASTNode *body = condition->next_sibling;
-            Value *value = evaluate(condition);
-            if (is_truthy(value))
+
+            if (n_required_values)
             {
-                down = body;
+                // push context                
+                thread->context_stack[thread->context_stack_size].n_values_needed = n_required_values;
+                thread->context_stack[thread->context_stack_size].previous_child = current_node->first_child;
+                thread->context_stack_size += 1;
             }
         }
-        else if (statement->type == WHILE_NODE)
+
+        int execute_current_node = 1;
+        if (thread->context_stack_size > 0)
         {
-            ASTNode *condition = statement->first_child;
-            ASTNode *body = condition->next_sibling;
-            Value *value = evaluate(condition);
-            if (is_truthy(value))
+            // push value to context
+            if (returned_value)
             {
-                down = body;
+                int n = thread->context_stack[thread->context_stack_size].n_values_filled;
+                thread->context_stack[thread->context_stack_size].values[n] = returned_value;
+                thread->context_stack[thread->context_stack_size].n_values_filled += 1;
+            }
+
+            int have = thread->context_stack[thread->context_stack_size].n_values_filled;
+            int need = thread->context_stack[thread->context_stack_size].n_values_needed;
+            if (have < need)
+            {
+                execute_current_node = 1;
+                down = thread->context_stack[thread->context_stack_size].previous_child->next_sibling;
             }
         }
-        else if (statement->type == PIPE_NODE)
+
+        returned_value = 0;
+
+        if (execute_current_node)
         {
-            ASTNode *left = statement->first_child;
-            ASTNode *right = statement->first_child->next_sibling;
-            InterpreterThread *left_thread = spawn_child_thread(thread, left);
-            InterpreterThread *right_thread = spawn_child_thread(thread, right);
-            left_thread->write_pipe = &pipe_buffers[0];
-            done = 1;
+            if (current_node->type == PROGRAM_NODE)
+            {
+                down = current_node->first_child;
+            }
+            else if (current_node->type == PRINT_NODE)
+            {
+                Value *value = evaluate(current_node->first_child);
+                print(thread, value);
+            }
+            else if (current_node->type == SET_NODE)
+            {
+                char *name = current_node->first_child->name;
+                ASTNode *rhs = current_node->first_child->next_sibling;
+                Value *value = evaluate(rhs);
+                set_symbol(name, value);
+            }
+            else if (current_node->type == HOST_NODE)
+            {
+                char *program = current_node->first_child->string;
+                char *arguments[64];
+                int n_arguments = 0;
+                ASTNode *argument = current_node->first_child->next_sibling;
+                while (argument)
+                {
+                    arguments[n_arguments] = argument->string;
+                    n_arguments += 1;
+                    argument = argument->next_sibling;
+                }
+                execute_host_program(program, arguments, n_arguments);
+            }
+            else if (current_node->type == CODEBLOCK_NODE)
+            {
+                down = current_node->first_child;
+            }
+            else if (current_node->type == IF_NODE)
+            {
+                ASTNode *condition = current_node->first_child;
+                ASTNode *body = condition->next_sibling;
+                Value *value = evaluate(condition);
+                if (is_truthy(value))
+                {
+                    down = body;
+                }
+            }
+            else if (current_node->type == WHILE_NODE)
+            {
+                ASTNode *condition = current_node->first_child;
+                ASTNode *body = condition->next_sibling;
+                Value *value = evaluate(condition);
+                if (is_truthy(value))
+                {
+                    down = body;
+                }
+            }
+            else if (current_node->type == PIPE_NODE)
+            {
+                ASTNode *left = current_node->first_child;
+                ASTNode *right = current_node->first_child->next_sibling;
+                InterpreterThread *left_thread = spawn_child_thread(thread, left);
+                InterpreterThread *right_thread = spawn_child_thread(thread, right);
+                left_thread->write_pipe = &pipe_buffers[0];
+                done = 1;
+            }
+            else
+            {
+                printf("ERROR: Unimplemented AST node\n");
+            }
         }
                 
         ASTNode *next = 0;
@@ -418,7 +498,7 @@ void resume_execution(InterpreterThread *thread)
             next = down;
         }
 
-        ASTNode *node = statement;
+        ASTNode *node = current_node;
         while (!next)
         {
             if (node == thread->root)
@@ -445,12 +525,12 @@ void resume_execution(InterpreterThread *thread)
             }
         }
 
-        statement = next;
+        current_node = next;
 
         done = 1;
     }
 
-    thread->current = statement;
+    thread->current = current_node;
 }
 
 void run_program(ASTNode *program)
@@ -459,14 +539,7 @@ void run_program(ASTNode *program)
     pipe_buffers[0].read_offset = 0;
     pipe_buffers[0].overflow_flag = 0;
 
-    thread_pool[0].root = program;
-    thread_pool[0].current = program;
-    thread_pool[0].n_pending_children = 0;
-    thread_pool[0].finished = 0;
-    thread_pool[0].parent = 0;
-    thread_pool[0].write_pipe = 0;
-    thread_pool[0].read_pipe = 0;
-    n_threads = 1;
+    spawn_child_thread(0, program);
 
     int done = 0;
     while (!done)
