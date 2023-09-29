@@ -115,17 +115,16 @@ Value *readline(InterpreterThread *context)
     while (is_more_data)
     {
         char c = data[i];
-        buffer[j] = c;
-        j += 1;
-
+        i += 1;
         if (c == '\n')
         {
             break;
         }
+        buffer[j] = c;
+        j += 1;
 
-        i += 1;
 
-        if (i == context->read_pipe->write_offset)
+        if (i >= context->read_pipe->write_offset)
         {
             is_more_data = context->read_pipe->overflow_flag;
         }
@@ -136,6 +135,8 @@ Value *readline(InterpreterThread *context)
             context->read_pipe->overflow_flag = 0;
         }
     }
+
+    buffer[j] = 0;
 
     context->read_pipe->read_offset = i;
 
@@ -205,7 +206,7 @@ void print(InterpreterThread *context, Value *value)
         int source_length = strlen(temp);
         
         int allowed_to_write = 1;
-        int is_data_left = source_offset < source_length - 1;
+        int is_data_left = source_offset < source_length;
         while (allowed_to_write && is_data_left)
         {
             if (context->write_pipe->overflow_flag && buffer_offset >= read_offset)
@@ -217,7 +218,7 @@ void print(InterpreterThread *context, Value *value)
                 char *destination = &context->write_pipe->data[buffer_offset];
                 *destination = temp[source_offset];
                 source_offset += 1;
-                is_data_left = source_offset < source_length - 1;
+                is_data_left = source_offset < source_length;
 
                 buffer_offset += 1;
                 if (buffer_offset >= sizeof(context->write_pipe->data))

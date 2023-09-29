@@ -1,8 +1,7 @@
 while true
-do
-    echo "hello"
-done | while true
-do
-    read -a data
-    echo "from another thread: " $data
-done
+{
+    print "hello"
+} | while true
+{
+    print "from another thread: " + readline()
+}
