@@ -425,6 +425,12 @@ void resume_execution(InterpreterThread *thread)
                     down = context->previous_child->next_sibling;
                 else
                     down = current_node->first_child;
+
+                context->previous_child = down;
+            }
+            else
+            {
+                thread->context_stack_size -= 1; // pop context stack
             }
         }
 
@@ -504,9 +510,21 @@ void resume_execution(InterpreterThread *thread)
             {
                 thread->returned_value = lookup_symbol(current_node->name);
             }
+            else if (current_node->type == MULTIPLY_NODE)
+            {
+                Value *left = context->values[0];
+                Value *right = context->values[1];
+
+                if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
+                {
+                    int product = left->integer_value * right->integer_value;
+                    thread->returned_value = alloc_value(VALUE_TYPE_NUMBER);
+                    thread->returned_value->integer_value = product;
+                }
+            }
             else
             {
-                printf("ERROR: Unimplemented AST node\n");
+                printf("ERROR: Unimplemented AST node (%s:%d)\n", __FILE__, __LINE__);
             }
         }
                 
