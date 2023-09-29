@@ -1,2 +1,6 @@
-set x = 2 * 5 + 10 * (3 + 6)
-print x # 100
+print readline()
+print readline()
+print readline()
+print readline()
+print readline()
+print readline()

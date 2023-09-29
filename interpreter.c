@@ -152,96 +152,6 @@ Value *lookup_symbol(char *name)
     return 0;
 }
 
-Value *evaluate(ASTNode *expression)
-{
-    enum ASTNodeType type = expression->type;
-
-    Value *result = 0;
-
-    if (type == NAME_NODE)
-    {
-        return lookup_symbol(expression->name);
-    }
-    else if (type == NUMBER_NODE)
-    {
-        result = alloc_value(VALUE_TYPE_NUMBER);
-        result->integer_value = expression->number;
-    }
-    else if (type == STRING_NODE)
-    {
-        result = alloc_value(VALUE_TYPE_STRING);
-        result->string_value = expression->string;
-    }
-    else if (type == FUNCTION_CALL_NODE)
-    {
-        if (streq(expression->name, "readline"))
-        {
-            result = readline();
-        }
-        else
-        {
-            printf("PARSE ERROR: Unknown function \"%s\" (parser.c:%d)\n", expression->name, __LINE__);
-        }
-    }
-    else if (type == ADD_NODE)
-    {
-        Value *left = evaluate(expression->first_child);
-        Value *right = evaluate(expression->first_child->next_sibling);
-        
-        if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
-        {
-            int sum = left->integer_value + right->integer_value;
-            result = alloc_value(VALUE_TYPE_NUMBER);
-            result->integer_value = sum;
-        }
-        else if (left->type == VALUE_TYPE_STRING && right->type == VALUE_TYPE_NUMBER)
-        {
-            char buffer[256];
-            sprintf(buffer, "%s%d",left->string_value, right->integer_value);
-            result = alloc_value(VALUE_TYPE_STRING);
-            result->string_value = save_string_to_heap(buffer);
-        }
-        else if (left->type == VALUE_TYPE_STRING && right->type == VALUE_TYPE_STRING)
-        {
-            char buffer[256];
-            sprintf(buffer, "%s%s",left->string_value, right->string_value);
-            result = alloc_value(VALUE_TYPE_STRING);
-            result->string_value = save_string_to_heap(buffer);
-        }
-
-        if (!result)
-        {
-            printf("ERROR: Unable to perform addition operation (parser.c:%d)\n", __LINE__);
-        }
-    }
-    else if (type == MULTIPLY_NODE)
-    {
-        Value *left = evaluate(expression->first_child);
-        Value *right = evaluate(expression->first_child->next_sibling);
-
-        if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
-        {
-            int product = left->integer_value * right->integer_value;
-            result = alloc_value(VALUE_TYPE_NUMBER);
-            result->integer_value = product;
-        }
-    }
-    else if (type == LESSTHAN_NODE)
-    {
-        Value *left = evaluate(expression->first_child);
-        Value *right = evaluate(expression->first_child->next_sibling);
-
-        if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
-        {
-            int comparison = left->integer_value < right->integer_value;
-            result = alloc_value(VALUE_TYPE_BOOLEAN);
-            result->boolean_value = comparison;
-        }
-    }
-
-    return result;
-}
-
 void print(InterpreterThread *context, Value *value)
 {
     char temp[256];
@@ -445,13 +355,12 @@ void resume_execution(InterpreterThread *thread)
             }
             else if (current_node->type == PRINT_NODE)
             {
-                Value *value = evaluate(current_node->first_child);
+                Value *value = context->values[0];
                 print(thread, value);
             }
             else if (current_node->type == SET_NODE)
             {
                 char *name = current_node->first_child->next_sibling->name;
-                ASTNode *rhs = current_node->first_child;
                 Value *value = context->values[0];
                 set_symbol(name, value);
             }
@@ -475,21 +384,21 @@ void resume_execution(InterpreterThread *thread)
             }
             else if (current_node->type == IF_NODE)
             {
-                ASTNode *condition = current_node->first_child;
-                ASTNode *body = condition->next_sibling;
-                Value *value = evaluate(condition);
+                Value *value = context->values[0];
                 if (is_truthy(value))
                 {
+                    ASTNode *condition = current_node->first_child;
+                    ASTNode *body = condition->next_sibling;
                     down = body;
                 }
             }
             else if (current_node->type == WHILE_NODE)
             {
-                ASTNode *condition = current_node->first_child;
-                ASTNode *body = condition->next_sibling;
-                Value *value = evaluate(condition);
+                Value *value = context->values[0];
                 if (is_truthy(value))
                 {
+                    ASTNode *condition = current_node->first_child;
+                    ASTNode *body = condition->next_sibling;
                     down = body;
                 }
             }
@@ -507,9 +416,25 @@ void resume_execution(InterpreterThread *thread)
                 thread->returned_value = alloc_value(VALUE_TYPE_NUMBER);
                 thread->returned_value->integer_value = current_node->number;
             }
+            else if (current_node->type == STRING_NODE)
+            {
+                thread->returned_value = alloc_value(VALUE_TYPE_STRING);
+                thread->returned_value->string_value = current_node->string;
+            }
             else if (current_node->type == NAME_NODE)
             {
                 thread->returned_value = lookup_symbol(current_node->name);
+            }
+            else if (current_node->type == FUNCTION_CALL_NODE)
+            {
+                if (streq(current_node->name, "readline"))
+                {
+                    thread->returned_value = readline();
+                }
+                else
+                {
+                    printf("PARSE ERROR: Unknown function \"%s\" (%s:%d)\n", current_node->name, __FILE__, __LINE__);
+                }
             }
             else if (current_node->type == MULTIPLY_NODE)
             {
@@ -554,6 +479,22 @@ void resume_execution(InterpreterThread *thread)
                 if (!result)
                 {
                     printf("ERROR: Unable to perform addition operation (parser.c:%d)\n", __LINE__);
+                }
+
+                thread->returned_value = result;
+            }
+            else if (current_node->type == LESSTHAN_NODE)
+            {
+                Value *left = context->values[0];
+                Value *right = context->values[1];
+
+                Value *result;
+
+                if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
+                {
+                    int comparison = left->integer_value < right->integer_value;
+                    result = alloc_value(VALUE_TYPE_BOOLEAN);
+                    result->boolean_value = comparison;
                 }
 
                 thread->returned_value = result;
