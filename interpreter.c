@@ -6,7 +6,7 @@
 
 struct PipeBuffer
 {
-    char data[1024];
+    char data[128];
     int write_offset;
     int read_offset;
     int overflow_flag;
@@ -78,6 +78,56 @@ typedef struct Symbol Symbol;
 Symbol symbol_table[64];
 int n_symbols = 0;
 
+void print_pipe_state(PipeBuffer *pipe)
+{
+    int size = sizeof(pipe->data);
+    for (int i = 0; i < size; i += 1)
+    {
+        char c = pipe->data[i];
+        if ('a' <= c && c <= 'z')
+        {
+            putc(c, stdout);
+        }
+        else if (c == '\n')
+        {
+            putc(' ', stdout);
+        }
+        else
+        {
+            putc('_', stdout);
+        }
+    }
+
+    if (pipe->overflow_flag)
+    {
+        printf("  OVERFLOW");
+    }
+    printf("\n");
+
+    for (int i = 0; i < size; i += 1)
+    {
+        if (i == pipe->write_offset && i == pipe->read_offset)
+        {
+            putc('X', stdout);
+        }
+        else if (i == pipe->write_offset)
+        {
+            putc('^', stdout);
+        }
+        else if (i == pipe->read_offset)
+        {
+            putc('v', stdout);
+        }
+        else
+        {
+            putc(' ', stdout);
+        }
+    }
+
+    printf("\n");
+    printf("\n");
+}
+
 Value *alloc_value(int type)
 {
     Value *value = malloc(sizeof(Value));
@@ -142,6 +192,9 @@ Value *readline(InterpreterThread *context)
 
     value->string_value = save_string_to_heap(buffer);
 
+    printf("READ\n");
+    print_pipe_state(context->read_pipe);
+
     return value;
 }
 
@@ -196,7 +249,7 @@ void print(InterpreterThread *context, Value *value)
 
     if (context->write_pipe == 0)
     {
-        printf("%s", temp);
+        // printf("%s", temp);
     }
     else
     {
@@ -236,6 +289,8 @@ void print(InterpreterThread *context, Value *value)
             // error
             printf("ERROR: Buffer overflow (interpreter.c:%d)\n", __LINE__);
         }
+        printf("WRITE\n");
+        print_pipe_state(context->write_pipe);
     }
 }
 
@@ -428,6 +483,7 @@ void resume_execution(InterpreterThread *thread)
                 InterpreterThread *right_thread = spawn_child_thread(thread, right);
                 left_thread->write_pipe = &pipe_buffers[0];
                 right_thread->read_pipe = &pipe_buffers[0];
+                print_pipe_state(&pipe_buffers[0]);
                 done = 1;
             }
             else if (current_node->type == NUMBER_NODE)
