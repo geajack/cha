@@ -240,9 +240,10 @@ ASTNode *parser_consume_statement(Parser *parser)
 
             ASTNode *rhs = parser_consume_expression(parser, OP_PRECEDENCE_NONE);
             rhs->parent = statement;
-            name_node->next_sibling = rhs;
-
-            statement->first_child = name_node;
+            name_node->parent = statement;
+            statement->first_child = rhs; // deliberate - we always pack expressions "to the left".
+                                          // The interpreter depends on this convention.
+            statement->first_child->next_sibling = name_node;
         }
         else if (streq(text, "if"))
         {

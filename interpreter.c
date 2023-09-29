@@ -434,8 +434,8 @@ void resume_execution(InterpreterThread *thread)
             }
             else if (current_node->type == SET_NODE)
             {
-                char *name = current_node->first_child->name;
-                ASTNode *rhs = current_node->first_child->next_sibling;
+                char *name = current_node->first_child->next_sibling->name;
+                ASTNode *rhs = current_node->first_child;
                 Value *value = evaluate(rhs);
                 set_symbol(name, value);
             }
