@@ -1,4 +1,4 @@
-yes hello | {
+yes hello | while true { print "hi " + readline() } | {
     while true
     {
         print "from another process: " + readline()

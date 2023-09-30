@@ -29,7 +29,8 @@ struct PipeBuffer
 
 typedef struct PipeBuffer PipeBuffer;
 
-PipeBuffer pipe_buffers[1];
+PipeBuffer pipe_buffers[64];
+int n_pipes_in_use = 0;
 
 const int GLOBAL_HOST_READ_BUFFER_SIZE = 1024;
 char GLOBAL_HOST_READ_BUFFER[GLOBAL_HOST_READ_BUFFER_SIZE];
@@ -174,6 +175,13 @@ void set_symbol(char *name, Value *value)
     symbol_table[i].value = value;
     
     if (i == n_symbols) n_symbols += 1;
+}
+
+PipeBuffer *acquire_internal_pipe()
+{
+    PipeBuffer *pipe = &pipe_buffers[n_pipes_in_use];
+    n_pipes_in_use += 1;
+    return pipe;
 }
 
 Value *readline(InterpreterThread *context)
@@ -657,13 +665,26 @@ void resume_execution(InterpreterThread *thread)
             }
             else if (current_node->type == PIPE_NODE)
             {
-                ASTNode *left = current_node->first_child;
-                ASTNode *right = current_node->first_child->next_sibling;
-                InterpreterThread *left_thread = spawn_child_thread(thread, left);
-                InterpreterThread *right_thread = spawn_child_thread(thread, right);
-                left_thread->write_pipe = &pipe_buffers[0];
-                right_thread->read_pipe = &pipe_buffers[0];
-                // print_pipe_state(&pipe_buffers[0]);
+                ASTNode *chain = current_node->first_child->next_sibling;
+                InterpreterThread *left_thread = spawn_child_thread(thread, current_node->first_child);
+                while (chain->type == PIPE_NODE)
+                {
+                    ASTNode *node = chain->first_child;
+                    InterpreterThread *right_thread = spawn_child_thread(thread, node);
+                    
+                    PipeBuffer *pipe = acquire_internal_pipe();
+                    left_thread->write_pipe = pipe;
+                    right_thread->read_pipe = pipe;
+                    
+                    left_thread = right_thread;
+                    chain = chain->first_child->next_sibling;
+                }
+
+                InterpreterThread *right_thread = spawn_child_thread(thread, chain);
+                PipeBuffer *pipe = acquire_internal_pipe();
+                left_thread->write_pipe = pipe;
+                right_thread->read_pipe = pipe;
+                
                 done = 1;
             }
             else if (current_node->type == NUMBER_NODE)
