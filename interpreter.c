@@ -173,7 +173,7 @@ void thread_read_from_host(InterpreterThread *thread)
 }
 
 // incomplete: this never returns 0 if it's outputting to stdout, but probably stdout can get clogged too?
-int print(InterpreterThread *context, Value *value)
+int print(InterpreterThread *thread, Value *value)
 {
     char temp[256];
 
@@ -197,13 +197,13 @@ int print(InterpreterThread *context, Value *value)
         }
     }
 
-    if (context->write_pipe == 0)
+    if (thread->write_pipe == 0)
     {
         printf("%s", temp);
     }
     else
     {
-        return pipe_write(context->write_pipe, temp, strlen(temp));
+        return pipe_write(thread->write_pipe, temp, strlen(temp));
     }
 
     return 1;
@@ -270,6 +270,8 @@ InterpreterThread *spawn_child_thread(InterpreterThread *parent, ASTNode *root)
     thread_pool[n_threads].returned_value = 0;
     thread_pool[n_threads].awaiting_pid = 0;
     thread_pool[n_threads].waiting_on_host_process = 0;
+    thread_pool[n_threads].host_pipe.read = STDIN_FILENO;
+    thread_pool[n_threads].host_pipe.write = STDOUT_FILENO;
     
     InterpreterThread *child = &thread_pool[n_threads];
     if (parent)
