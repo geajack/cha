@@ -1,3 +1,5 @@
-while true { print "a " } | {
-    while true { print readline() + "b " }
-} | while true { print readline() + "c" }
+while true
+{
+    echo apples
+    sleep 0.5
+}# | grep apples

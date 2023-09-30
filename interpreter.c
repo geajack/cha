@@ -209,10 +209,10 @@ int print(InterpreterThread *context, Value *value)
     return 1;
 }
 
+int n_processes = 0;
 int execute_host_program(InterpreterThread *thread, char *program, char **arguments, int n_arguments)
 {
-    static int n_processes = 0;
-    if (n_processes >= 3)
+    if (n_processes >= 10)
     {
         printf("Too many processes running, I won't run another one.\n");
         return 0;
@@ -224,8 +224,8 @@ int execute_host_program(InterpreterThread *thread, char *program, char **argume
     int flags = fcntl(thread->host_pipe.read, F_GETFL);
     fcntl(thread->host_pipe.read, F_SETFL, flags | O_NONBLOCK);
 
-    int pid = fork();
     n_processes += 1;
+    int pid = fork();
     if (pid == 0)
     {
         dup2(thread->host_pipe.write, STDOUT_FILENO);
@@ -438,6 +438,7 @@ void resume_execution(InterpreterThread *thread)
                         {
                             // process is done
                             thread->awaiting_pid = 0;
+                            n_processes -= 1;
                         }
                         else
                         {
