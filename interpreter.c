@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <wait.h>
 
 #include "parser.c"
 
@@ -39,6 +41,8 @@ struct InterpreterThread
     EvaluationContext context_stack[32];
     int context_stack_size;
     struct Value *returned_value;
+
+    int awaiting_pid;
 
     PipeBuffer *write_pipe;
     PipeBuffer *read_pipe;
@@ -323,15 +327,34 @@ int print(InterpreterThread *context, Value *value)
     return 1;
 }
 
-void execute_host_program(char *program, char **arguments, int n_arguments)
+int n_processes = 0;
+int execute_host_program(char *program, char **arguments, int n_arguments)
 {
-    printf("Executing host program \"%s\"", program);
-    if (n_arguments > 0) printf(" with arguments ");
-    for (int i = 0; i < n_arguments; i++)
+    if (n_processes >= 3)
     {
-        printf("[%s] ", arguments[i]);
+        printf("Too many processes running, I won't run another one.\n");
+        return 0;
     }
-    printf("\n");
+
+    // printf("Executing host program \"%s\"", program);
+    // if (n_arguments > 0) printf(" with arguments ");
+    // for (int i = 0; i < n_arguments; i++)
+    // {
+    //     printf("[%s] ", arguments[i]);
+    // }
+    // printf("\n");
+
+    arguments[n_arguments] = 0;
+
+    int pid = fork();
+    n_processes += 1;
+    if (pid == 0)
+    {
+        execvp(arguments[0], arguments);
+        printf("ERROR: Could not start process \"%s\".\n", program);
+        exit(0);
+    }
+    return pid;
 }
 
 int is_truthy(Value *value)
@@ -361,6 +384,7 @@ InterpreterThread *spawn_child_thread(InterpreterThread *parent, ASTNode *root)
     thread_pool[n_threads].parent = parent;
     thread_pool[n_threads].context_stack_size = 0;
     thread_pool[n_threads].returned_value = 0;
+    thread_pool[n_threads].awaiting_pid = 0;
     
     InterpreterThread *child = &thread_pool[n_threads];
     if (parent)
@@ -474,17 +498,46 @@ void resume_execution(InterpreterThread *thread)
             }
             else if (current_node->type == HOST_NODE)
             {
-                char *program = current_node->first_child->string;
-                char *arguments[64];
-                int n_arguments = 0;
-                ASTNode *argument = current_node->first_child->next_sibling;
-                while (argument)
+                if (thread->awaiting_pid == 0)
                 {
-                    arguments[n_arguments] = argument->string;
-                    n_arguments += 1;
-                    argument = argument->next_sibling;
+                    char *program = current_node->first_child->string;
+                    char *arguments[64];
+                    arguments[0] = program;
+                    int n_arguments = 1;
+                    ASTNode *argument = current_node->first_child->next_sibling;
+                    while (argument)
+                    {
+                        arguments[n_arguments] = argument->string;
+                        n_arguments += 1;
+                        argument = argument->next_sibling;
+                    }                    
+                    int pid = execute_host_program(program, arguments, n_arguments);
+                    if (pid > 0)
+                    {
+                        thread->awaiting_pid = pid;
+                    }
+                    else
+                    {
+                        printf("ERROR: Error launching process \"%s\" (%s:%d)\n", program, __FILE__, __LINE__);
+                    }
+
+                    down = current_node;
                 }
-                execute_host_program(program, arguments, n_arguments);
+                else
+                {
+                    int exit_code;
+                    int result = waitpid(thread->awaiting_pid, &exit_code, WNOHANG);
+                    if (result > 0)
+                    {
+                        // process is done
+                        thread->awaiting_pid = 0;
+                    }
+                    else
+                    {
+                        // process is still running
+                        down = current_node;
+                    }
+                }
             }
             else if (current_node->type == CODEBLOCK_NODE)
             {

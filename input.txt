@@ -1,14 +1,3 @@
-set n = 0
-
-while true
-{
-    print "hello"
-    set n = n + 1
-} | {
-    print readline() + " from another thread"
-    print readline() + " from another thread"
-    print readline() + " from another thread"
-    print readline() + " from another thread"
-    print readline() + " from another thread"
-    print readline() + " from another thread"
-}
+sleep 2
+echo hello from echo
+print "done"
