@@ -1,3 +1,1 @@
-sleep 2
-echo hello from echo
-print "done"
+echo hello from echo | print "from another process: " + readline()

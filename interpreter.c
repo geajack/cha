@@ -11,9 +11,11 @@ const int PIPE_BUFFER_SIZE = 1024;
 struct PipeBuffer
 {
     char data[PIPE_BUFFER_SIZE];
+    char unsent_data[PIPE_BUFFER_SIZE];
     int write_offset;
     int read_offset;
     int overflow_flag;
+    int n_unsent_bytes;
 };
 
 typedef struct PipeBuffer PipeBuffer;
@@ -232,6 +234,78 @@ Value *lookup_symbol(char *name)
     return 0;
 }
 
+int pipe_write(PipeBuffer *write_pipe, char *data, int n_bytes)
+{
+    const int read_offset = write_pipe->read_offset;
+
+    {
+        const int write_offset = write_pipe->write_offset;
+        const int is_overflow = write_pipe->overflow_flag;
+
+        int n_bytes_of_space;
+        if (is_overflow)
+        {
+            n_bytes_of_space = read_offset - write_offset;
+        }
+        else
+        {
+            int n_available_before_wraparound = PIPE_BUFFER_SIZE - write_offset;
+            int n_available_after_wraparound = read_offset;
+            n_bytes_of_space = n_available_before_wraparound + n_available_after_wraparound;
+        }
+
+        if (n_bytes > n_bytes_of_space)
+        {
+            return 0;
+        }
+    }
+
+    int buffer_offset = write_pipe->write_offset;
+    int source_offset = 0;
+    int source_length = n_bytes;
+    
+    int allowed_to_write = 1;
+    int is_data_left = source_offset < source_length;
+    while (allowed_to_write && is_data_left)
+    {
+        if (write_pipe->overflow_flag && buffer_offset >= read_offset)
+        {
+            allowed_to_write = 0;
+        }
+        else
+        {
+            char *destination = &write_pipe->data[buffer_offset];
+            *destination = data[source_offset];
+            source_offset += 1;
+            is_data_left = source_offset < source_length;
+
+            buffer_offset += 1;
+            if (buffer_offset >= sizeof(write_pipe->data))
+            {
+                buffer_offset = 0;
+                write_pipe->overflow_flag = 1;
+            }
+        }
+    }
+
+    write_pipe->write_offset = buffer_offset;
+
+    if (is_data_left)
+    {
+        // error - should never happen since we make sure we have enough space before writing
+        printf("ERROR: Buffer overflow (interpreter.c:%d)\n", __LINE__);
+    }
+}
+
+void pipe_try_to_flush_unsent(PipeBuffer *pipe)
+{
+    int success = pipe_write(pipe, pipe->unsent_data, pipe->n_unsent_bytes);
+    if (success)
+    {
+        pipe->n_unsent_bytes = 0;
+    }
+}
+
 // incomplete: this never returns 0 if it's outputting to stdout, but probably stdout can get clogged too?
 int print(InterpreterThread *context, Value *value)
 {
@@ -263,65 +337,7 @@ int print(InterpreterThread *context, Value *value)
     }
     else
     {
-        const int read_offset = context->write_pipe->read_offset;
-
-        {
-            const int write_offset = context->write_pipe->write_offset;
-            const int is_overflow = context->write_pipe->overflow_flag;
-
-            int n_bytes_of_space;
-            if (is_overflow)
-            {
-                n_bytes_of_space = read_offset - write_offset;
-            }
-            else
-            {
-                int n_available_before_wraparound = PIPE_BUFFER_SIZE - write_offset;
-                int n_available_after_wraparound = read_offset;
-                n_bytes_of_space = n_available_before_wraparound + n_available_after_wraparound;
-            }
-
-            if (strlen(temp) > n_bytes_of_space)
-            {
-                return 0;
-            }
-        }
-
-        int buffer_offset = context->write_pipe->write_offset;
-        int source_offset = 0;
-        int source_length = strlen(temp);
-        
-        int allowed_to_write = 1;
-        int is_data_left = source_offset < source_length;
-        while (allowed_to_write && is_data_left)
-        {
-            if (context->write_pipe->overflow_flag && buffer_offset >= read_offset)
-            {
-                allowed_to_write = 0;
-            }
-            else
-            {
-                char *destination = &context->write_pipe->data[buffer_offset];
-                *destination = temp[source_offset];
-                source_offset += 1;
-                is_data_left = source_offset < source_length;
-
-                buffer_offset += 1;
-                if (buffer_offset >= sizeof(context->write_pipe->data))
-                {
-                    buffer_offset = 0;
-                    context->write_pipe->overflow_flag = 1;
-                }
-            }
-        }
-
-        context->write_pipe->write_offset = buffer_offset;
-
-        if (is_data_left)
-        {
-            // error - should never happen since we make sure we have enough space before writing
-            printf("ERROR: Buffer overflow (interpreter.c:%d)\n", __LINE__);
-        }
+        return pipe_write(context->write_pipe, temp, strlen(temp));
     }
 
     return 1;
@@ -498,7 +514,7 @@ void resume_execution(InterpreterThread *thread)
             }
             else if (current_node->type == HOST_NODE)
             {
-                if (thread->awaiting_pid == 0)
+                if (!thread->waiting_on_host_process)
                 {
                     char *program = current_node->first_child->string;
                     char *arguments[64];
@@ -515,6 +531,7 @@ void resume_execution(InterpreterThread *thread)
                     if (pid > 0)
                     {
                         thread->awaiting_pid = pid;
+                        thread->waiting_on_host_process = 1;
                     }
                     else
                     {
@@ -525,12 +542,32 @@ void resume_execution(InterpreterThread *thread)
                 }
                 else
                 {
-                    int exit_code;
-                    int result = waitpid(thread->awaiting_pid, &exit_code, WNOHANG);
-                    if (result > 0)
+                    if (thread->write_pipe->n_unsent_bytes > 0)
                     {
-                        // process is done
-                        thread->awaiting_pid = 0;
+                        // try to send data
+                        pipe_try_to_flush_unsent(thread->write_pipe);
+                    }
+
+                    if (thread->awaiting_pid > 0)
+                    {
+                        if (thread->write_pipe->n_unsent_bytes == 0)
+                        {
+                            // try to read data from process
+                            
+                        }
+
+                        int exit_code;
+                        int result = waitpid(thread->awaiting_pid, &exit_code, WNOHANG);                    
+                        if (result > 0)
+                        {
+                            // process is done
+                            thread->awaiting_pid = 0;
+                        }
+                    }
+
+                    if (thread->awaiting_pid == 0 && thread->write_pipe.n_unsent_bytes == 0)
+                    {
+                        thread->waiting_on_host_process = 0;
                     }
                     else
                     {
