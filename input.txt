@@ -1,1 +1,6 @@
-echo hello from echo | print "from another process: " + readline()
+yes hello | {
+    while true
+    {
+        print "from another process: " + readline()
+    }
+}
