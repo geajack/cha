@@ -184,13 +184,12 @@ PipeBuffer *acquire_internal_pipe()
     return pipe;
 }
 
-Value *readline(InterpreterThread *context)
+int pipe_read_line(PipeBuffer *read_pipe, char *buffer)
 {
-    char buffer[128];
-    
     int j = 0;
-    int i = context->read_pipe->read_offset;
-    char *data = context->read_pipe->data;
+    int i = read_pipe->read_offset;
+    int original_offset = read_pipe->read_offset;
+    char *data = read_pipe->data;
     int is_more_data = 1;
     while (is_more_data)
     {
@@ -203,28 +202,35 @@ Value *readline(InterpreterThread *context)
         buffer[j] = c;
         j += 1;
 
-
-        if (i >= context->read_pipe->write_offset)
+        if (i >= read_pipe->write_offset)
         {
-            is_more_data = context->read_pipe->overflow_flag;
+            is_more_data = read_pipe->overflow_flag;
         }
 
-        if (i >= sizeof(context->read_pipe->data))
+        if (i >= PIPE_BUFFER_SIZE)
         {
             i = 0;
-            context->read_pipe->overflow_flag = 0;
+            read_pipe->overflow_flag = 0;
         }
     }
+
+    read_pipe->read_offset = i;
+    buffer[j] = 0;
 
     if (!is_more_data)
     {
         // we ran out of data looking for a newline
+        read_pipe->read_offset = original_offset;
         return 0;
     }
 
-    buffer[j] = 0;
+    return 1;
+}
 
-    context->read_pipe->read_offset = i;
+Value *readline(PipeBuffer *read_pipe)
+{
+    char buffer[128];
+    if (!pipe_read_line(read_pipe, buffer)) return 0;
 
     Value *value = alloc_value(VALUE_TYPE_STRING);
     value->string_value = save_string_to_heap(buffer);
@@ -705,7 +711,7 @@ void resume_execution(InterpreterThread *thread)
             {
                 if (streq(current_node->name, "readline"))
                 {
-                    Value *value = readline(thread);
+                    Value *value = readline(thread->read_pipe);
                     if (value)
                     {
                         thread->returned_value = value;
