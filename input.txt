@@ -1,5 +1,1 @@
-while true
-{
-    echo apples
-    sleep 0.5
-}# | grep apples
+print "apples" | grep --line-buffered apples | print "::" + readline()

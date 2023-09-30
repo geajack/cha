@@ -24,6 +24,38 @@ PipeBuffer *acquire_internal_pipe()
     return pipe;
 }
 
+const int PIPE_READ_BUFFER_SIZE = PIPE_BUFFER_SIZE;
+char GLOBAL_PIPE_READ_BUFFER[1024];
+
+int pipe_read(PipeBuffer *read_pipe)
+{
+    int j = 0;
+    int i = read_pipe->read_offset;
+    int original_offset = read_pipe->read_offset;
+    char *data = read_pipe->data;
+    int is_more_data = 1;
+    while (is_more_data)
+    {
+        char c = data[i];
+        i += 1;
+        GLOBAL_PIPE_READ_BUFFER[j] = c;
+        j += 1;
+
+        if (i >= read_pipe->write_offset)
+        {
+            is_more_data = read_pipe->overflow_flag;
+        }
+
+        if (i >= PIPE_BUFFER_SIZE)
+        {
+            i = 0;
+            read_pipe->overflow_flag = 0;
+        }
+    }
+
+    return j;
+}
+
 int pipe_read_line(PipeBuffer *read_pipe, char *buffer)
 {
     int j = 0;

@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <wait.h>
+#include <errno.h>
 #include <fcntl.h>
 
 #include "parser.c"
@@ -47,7 +48,8 @@ struct InterpreterThread
     PipeBuffer *write_pipe;
     PipeBuffer *read_pipe;
 
-    POSIXPipe host_pipe;
+    int host_write;
+    int host_read;
 };
 
 typedef struct InterpreterThread InterpreterThread;
@@ -153,7 +155,7 @@ void thread_read_from_host(InterpreterThread *thread)
     {
         PipeBuffer *pipe = thread->write_pipe;
         
-        int result = read(thread->host_pipe.read, pipe->unsent_data, PIPE_BUFFER_SIZE);
+        int result = read(thread->host_read, pipe->unsent_data, PIPE_BUFFER_SIZE);
         if (result != -1)
         {
             // result is number of bytes
@@ -163,12 +165,34 @@ void thread_read_from_host(InterpreterThread *thread)
     }
     else
     {
-        int result = read(thread->host_pipe.read, GLOBAL_HOST_READ_BUFFER, GLOBAL_HOST_READ_BUFFER_SIZE);
+        int result = read(thread->host_read, GLOBAL_HOST_READ_BUFFER, GLOBAL_HOST_READ_BUFFER_SIZE);
         if (result != -1)
         {
             // result is number of bytes
             write(STDOUT_FILENO, GLOBAL_HOST_READ_BUFFER, result);
         }
+        else
+        {
+            // printf("%s\n", strerror(errno));
+        }
+    }
+}
+
+void thread_write_to_host(InterpreterThread *thread)
+{
+    if (thread->read_pipe)
+    {
+        int n_read = pipe_read(thread->read_pipe);
+        int n_written = write(thread->host_write, GLOBAL_PIPE_READ_BUFFER, n_read);
+        if (n_written < n_read)
+        {
+            printf("ERROR: Could not write to host process (%s:%d)\n", __FILE__, __LINE__);
+        }
+    }
+    else
+    {
+        // not implemented yet
+        // this is for if we're piping input right into the script from the command line
     }
 }
 
@@ -220,23 +244,36 @@ int execute_host_program(InterpreterThread *thread, char *program, char **argume
 
     arguments[n_arguments] = 0;
 
-    pipe((int*) &thread->host_pipe);
-    int flags = fcntl(thread->host_pipe.read, F_GETFL);
-    fcntl(thread->host_pipe.read, F_SETFL, flags | O_NONBLOCK);
+    typedef struct { int read; int write; } POSIXFDPair;
+    POSIXFDPair script_to_host;
+    POSIXFDPair host_to_script;
+
+    pipe((int*) &script_to_host);
+    pipe((int*) &host_to_script);
+    
+    int flags = fcntl(host_to_script.read, F_GETFL);
+    fcntl(host_to_script.read, F_SETFL, flags | O_NONBLOCK);
 
     n_processes += 1;
     int pid = fork();
     if (pid == 0)
     {
-        dup2(thread->host_pipe.write, STDOUT_FILENO);
-        close(thread->host_pipe.read);
+        dup2(host_to_script.write, STDOUT_FILENO);
+        dup2(script_to_host.read, STDIN_FILENO);
+
+        close(host_to_script.read);
+        close(script_to_host.write);
 
         execvp(arguments[0], arguments);
         printf("ERROR: Could not start process \"%s\".\n", program);
         exit(0);
     }
 
-    close(thread->host_pipe.write);
+    close(host_to_script.write);
+    close(script_to_host.read);
+
+    thread->host_write = script_to_host.write;
+    thread->host_read = host_to_script.read;
 
     return pid;
 }
@@ -270,8 +307,8 @@ InterpreterThread *spawn_child_thread(InterpreterThread *parent, ASTNode *root)
     thread_pool[n_threads].returned_value = 0;
     thread_pool[n_threads].awaiting_pid = 0;
     thread_pool[n_threads].waiting_on_host_process = 0;
-    thread_pool[n_threads].host_pipe.read = STDIN_FILENO;
-    thread_pool[n_threads].host_pipe.write = STDOUT_FILENO;
+    thread_pool[n_threads].host_read = STDIN_FILENO;
+    thread_pool[n_threads].host_write = STDOUT_FILENO;
     
     InterpreterThread *child = &thread_pool[n_threads];
     if (parent)
@@ -425,6 +462,8 @@ void resume_execution(InterpreterThread *thread)
                             may_continue = 0;
                         }
                     }
+
+                    thread_write_to_host(thread);
 
                     if (thread->awaiting_pid > 0)
                     {
