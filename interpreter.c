@@ -3,8 +3,17 @@
 #include <string.h>
 #include <unistd.h>
 #include <wait.h>
+#include <fcntl.h>
 
 #include "parser.c"
+
+struct POSIXPipe
+{
+    int read;
+    int write;
+};
+
+typedef struct POSIXPipe POSIXPipe;
 
 const int PIPE_BUFFER_SIZE = 1024;
 
@@ -21,6 +30,9 @@ struct PipeBuffer
 typedef struct PipeBuffer PipeBuffer;
 
 PipeBuffer pipe_buffers[1];
+
+const int GLOBAL_HOST_READ_BUFFER_SIZE = 1024;
+char GLOBAL_HOST_READ_BUFFER[GLOBAL_HOST_READ_BUFFER_SIZE];
 
 struct EvaluationContext
 {
@@ -45,9 +57,12 @@ struct InterpreterThread
     struct Value *returned_value;
 
     int awaiting_pid;
+    int waiting_on_host_process;
 
     PipeBuffer *write_pipe;
     PipeBuffer *read_pipe;
+
+    POSIXPipe host_pipe;
 };
 
 typedef struct InterpreterThread InterpreterThread;
@@ -295,6 +310,8 @@ int pipe_write(PipeBuffer *write_pipe, char *data, int n_bytes)
         // error - should never happen since we make sure we have enough space before writing
         printf("ERROR: Buffer overflow (interpreter.c:%d)\n", __LINE__);
     }
+
+    return 1;
 }
 
 void pipe_try_to_flush_unsent(PipeBuffer *pipe)
@@ -303,6 +320,31 @@ void pipe_try_to_flush_unsent(PipeBuffer *pipe)
     if (success)
     {
         pipe->n_unsent_bytes = 0;
+    }
+}
+
+void thread_read_from_host(InterpreterThread *thread)
+{
+    if (thread->write_pipe)
+    {
+        PipeBuffer *pipe = thread->write_pipe;
+        
+        int result = read(thread->host_pipe.read, pipe->unsent_data, PIPE_BUFFER_SIZE);
+        if (result != -1)
+        {
+            // result is number of bytes
+            pipe->n_unsent_bytes = result;
+            pipe_try_to_flush_unsent(pipe);
+        }
+    }
+    else
+    {
+        int result = read(thread->host_pipe.read, GLOBAL_HOST_READ_BUFFER, GLOBAL_HOST_READ_BUFFER_SIZE);
+        if (result != -1)
+        {
+            // result is number of bytes
+            write(STDOUT_FILENO, GLOBAL_HOST_READ_BUFFER, result);
+        }
     }
 }
 
@@ -344,7 +386,7 @@ int print(InterpreterThread *context, Value *value)
 }
 
 int n_processes = 0;
-int execute_host_program(char *program, char **arguments, int n_arguments)
+int execute_host_program(InterpreterThread *thread, char *program, char **arguments, int n_arguments)
 {
     if (n_processes >= 3)
     {
@@ -352,24 +394,26 @@ int execute_host_program(char *program, char **arguments, int n_arguments)
         return 0;
     }
 
-    // printf("Executing host program \"%s\"", program);
-    // if (n_arguments > 0) printf(" with arguments ");
-    // for (int i = 0; i < n_arguments; i++)
-    // {
-    //     printf("[%s] ", arguments[i]);
-    // }
-    // printf("\n");
-
     arguments[n_arguments] = 0;
+
+    pipe((int*) &thread->host_pipe);
+    int flags = fcntl(thread->host_pipe.read, F_GETFL);
+    fcntl(thread->host_pipe.read, F_SETFL, flags | O_NONBLOCK);
 
     int pid = fork();
     n_processes += 1;
     if (pid == 0)
     {
+        dup2(thread->host_pipe.write, STDOUT_FILENO);
+        close(thread->host_pipe.read);
+
         execvp(arguments[0], arguments);
         printf("ERROR: Could not start process \"%s\".\n", program);
         exit(0);
     }
+
+    close(thread->host_pipe.write);
+
     return pid;
 }
 
@@ -401,6 +445,7 @@ InterpreterThread *spawn_child_thread(InterpreterThread *parent, ASTNode *root)
     thread_pool[n_threads].context_stack_size = 0;
     thread_pool[n_threads].returned_value = 0;
     thread_pool[n_threads].awaiting_pid = 0;
+    thread_pool[n_threads].waiting_on_host_process = 0;
     
     InterpreterThread *child = &thread_pool[n_threads];
     if (parent)
@@ -527,7 +572,7 @@ void resume_execution(InterpreterThread *thread)
                         n_arguments += 1;
                         argument = argument->next_sibling;
                     }                    
-                    int pid = execute_host_program(program, arguments, n_arguments);
+                    int pid = execute_host_program(thread, program, arguments, n_arguments);
                     if (pid > 0)
                     {
                         thread->awaiting_pid = pid;
@@ -542,18 +587,25 @@ void resume_execution(InterpreterThread *thread)
                 }
                 else
                 {
-                    if (thread->write_pipe->n_unsent_bytes > 0)
+                    int may_continue = 1;
+                    int may_read_data = 1;
+                    if (thread->write_pipe)
                     {
                         // try to send data
                         pipe_try_to_flush_unsent(thread->write_pipe);
+                        if (thread->write_pipe->n_unsent_bytes > 0)
+                        {
+                            may_read_data = 0;
+                            may_continue = 0;
+                        }
                     }
 
                     if (thread->awaiting_pid > 0)
                     {
-                        if (thread->write_pipe->n_unsent_bytes == 0)
+                        if (may_read_data)
                         {
                             // try to read data from process
-                            
+                            thread_read_from_host(thread);
                         }
 
                         int exit_code;
@@ -563,15 +615,18 @@ void resume_execution(InterpreterThread *thread)
                             // process is done
                             thread->awaiting_pid = 0;
                         }
+                        else
+                        {
+                            may_continue = 0;
+                        }
                     }
 
-                    if (thread->awaiting_pid == 0 && thread->write_pipe.n_unsent_bytes == 0)
+                    if (may_continue)
                     {
                         thread->waiting_on_host_process = 0;
                     }
                     else
                     {
-                        // process is still running
                         down = current_node;
                     }
                 }
