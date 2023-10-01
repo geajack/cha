@@ -1,9 +1,10 @@
-set n = 0
-while n < 5
+set n = 1
+
+while n < 10
 {
     print "apples"
     print "oranges"
     set n = n + 1
-} | grep apples
+} | wc -l
 
 print "done"

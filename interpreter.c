@@ -188,17 +188,23 @@ void thread_read_from_host(InterpreterThread *thread)
 void thread_write_to_host(InterpreterThread *thread)
 {
     if (thread->read_pipe)
-    {
-        if (thread->read_pipe->closed)
+    {   
+        int n_read = pipe_read(thread->read_pipe);        
+
+        if (n_read == 0)
         {
-            close(thread->host_write);
-            return;
+            if (thread->read_pipe->closed)
+            {
+                close(thread->host_write);
+                return;
+            }
         }
 
-        int n_read = pipe_read(thread->read_pipe);
         int n_written = write(thread->host_write, GLOBAL_PIPE_READ_BUFFER, n_read);
+
         if (n_written < n_read)
         {
+            // host error, shouldn't happen
             printf("ERROR: Could not write to host process (%s:%d)\n", __FILE__, __LINE__);
         }
     }
@@ -264,8 +270,20 @@ int execute_host_program(InterpreterThread *thread, char *program, char **argume
     pipe((int*) &script_to_host);
     pipe((int*) &host_to_script);
     
-    int flags = fcntl(host_to_script.read, F_GETFL);
-    fcntl(host_to_script.read, F_SETFL, flags | O_NONBLOCK);
+    {
+        int flags = fcntl(host_to_script.read, F_GETFL);
+        fcntl(host_to_script.read, F_SETFL, flags | O_NONBLOCK);
+    }
+
+    {
+        int flags = fcntl(host_to_script.read, F_GETFD);
+        fcntl(host_to_script.read, F_SETFD, flags | FD_CLOEXEC);
+    }
+
+    {
+        int flags = fcntl(script_to_host.write, F_GETFD);
+        fcntl(script_to_host.write, F_SETFD, flags | FD_CLOEXEC);
+    }
 
     n_processes += 1;
     int pid = fork();
@@ -273,9 +291,6 @@ int execute_host_program(InterpreterThread *thread, char *program, char **argume
     {
         dup2(host_to_script.write, STDOUT_FILENO);
         dup2(script_to_host.read, STDIN_FILENO);
-
-        close(host_to_script.read);
-        close(script_to_host.write);
 
         execvp(arguments[0], arguments);
         printf("ERROR: Could not start process \"%s\".\n", program);
@@ -425,6 +440,7 @@ void resume_execution(InterpreterThread *thread)
                     // pipe is full - we have to retry later
                     down = current_node;
                     do_pop_context = 1;
+                    done = 1;
                 }
             }
             else if (current_node->type == SET_NODE)
@@ -508,6 +524,13 @@ void resume_execution(InterpreterThread *thread)
                     {
                         down = current_node;
                     }
+
+                    /*
+                    The job of executing a host node is to flush all data from the upstream thread to the host,
+                    then flush all data from the host to the downstream thread, then check if the host process
+                    has stopped. There's no need to do this more than once in a row.
+                    */
+                    done = 1;
                 }
             }
             else if (current_node->type == CODEBLOCK_NODE)
@@ -586,6 +609,7 @@ void resume_execution(InterpreterThread *thread)
                         // not enough data - we need to try again later
                         down = current_node;
                         do_pop_context = 0;
+                        done = 1;
                     }
                 }
                 else
@@ -716,8 +740,6 @@ void resume_execution(InterpreterThread *thread)
         }
 
         current_node = next;
-
-        done = 1;
     }
 
     thread->current = current_node;
