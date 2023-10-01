@@ -8,7 +8,7 @@ struct PipeBuffer
     char unsent_data[PIPE_BUFFER_SIZE];
     int write_offset;
     int read_offset;
-    int overflow_flag;
+    int lap_flag;
     int n_unsent_bytes;
     int closed;
 };
@@ -23,7 +23,7 @@ PipeBuffer *acquire_internal_pipe()
     PipeBuffer *pipe = &pipe_buffers[n_pipes_in_use];
     pipe->write_offset = 0;
     pipe->read_offset = 0;
-    pipe->overflow_flag = 0;
+    pipe->lap_flag = 0;
     pipe->n_unsent_bytes = 0;
     pipe->closed = 0;
     n_pipes_in_use += 1;
@@ -44,7 +44,7 @@ int pipe_read(PipeBuffer *read_pipe)
         int is_more_data = 1;
         if (i >= read_pipe->write_offset)
         {   
-            is_more_data = read_pipe->overflow_flag;
+            is_more_data = read_pipe->lap_flag;
         }
         if (!is_more_data) break;
 
@@ -53,7 +53,7 @@ int pipe_read(PipeBuffer *read_pipe)
         if (i >= PIPE_BUFFER_SIZE)
         {
             i = 0;
-            read_pipe->overflow_flag = 0;
+            read_pipe->lap_flag = 0;
         }
     }
 
@@ -82,13 +82,13 @@ int pipe_read_line(PipeBuffer *read_pipe, char *buffer)
 
         if (i >= read_pipe->write_offset)
         {
-            is_more_data = read_pipe->overflow_flag;
+            is_more_data = read_pipe->lap_flag;
         }
 
         if (i >= PIPE_BUFFER_SIZE)
         {
             i = 0;
-            read_pipe->overflow_flag = 0;
+            read_pipe->lap_flag = 0;
         }
     }
 
@@ -111,7 +111,7 @@ int pipe_write(PipeBuffer *write_pipe, char *data, int n_bytes)
 
     {
         const int write_offset = write_pipe->write_offset;
-        const int is_overflow = write_pipe->overflow_flag;
+        const int is_overflow = write_pipe->lap_flag;
 
         int n_bytes_of_space;
         if (is_overflow)
@@ -139,7 +139,7 @@ int pipe_write(PipeBuffer *write_pipe, char *data, int n_bytes)
     int is_data_left = source_offset < source_length;
     while (allowed_to_write && is_data_left)
     {
-        if (write_pipe->overflow_flag && buffer_offset >= read_offset)
+        if (write_pipe->lap_flag && buffer_offset >= read_offset)
         {
             allowed_to_write = 0;
         }
@@ -154,7 +154,7 @@ int pipe_write(PipeBuffer *write_pipe, char *data, int n_bytes)
             if (buffer_offset >= sizeof(write_pipe->data))
             {
                 buffer_offset = 0;
-                write_pipe->overflow_flag = 1;
+                write_pipe->lap_flag = 1;
             }
         }
     }
@@ -199,7 +199,7 @@ void print_pipe_state(PipeBuffer *pipe)
         }
     }
 
-    if (pipe->overflow_flag)
+    if (pipe->lap_flag)
     {
         printf("  OVERFLOW");
     }
