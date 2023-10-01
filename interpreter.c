@@ -189,6 +189,12 @@ void thread_write_to_host(InterpreterThread *thread)
 {
     if (thread->read_pipe)
     {
+        if (thread->read_pipe->closed)
+        {
+            close(thread->host_write);
+            return;
+        }
+
         int n_read = pipe_read(thread->read_pipe);
         int n_written = write(thread->host_write, GLOBAL_PIPE_READ_BUFFER, n_read);
         if (n_written < n_read)

@@ -1,15 +1,9 @@
 set n = 0
 while n < 5
 {
-    print "hello"
+    print "apples"
+    print "oranges"
     set n = n + 1
-} | {
-    set line = readline()
-    while line
-    {
-        print line
-        set line = readline()
-    }
-}
+} | grep apples
 
 print "done"

@@ -38,19 +38,17 @@ int pipe_read(PipeBuffer *read_pipe)
     int j = 0;
     int i = read_pipe->read_offset;
     int original_offset = read_pipe->read_offset;
-    char *data = read_pipe->data;
-    int is_more_data = 1;
-    while (is_more_data)
+    char *data = read_pipe->data;    
+    while (1)
     {
-        char c = data[i];
-        i += 1;
-        GLOBAL_PIPE_READ_BUFFER[j] = c;
-        j += 1;
-
+        int is_more_data = 1;
         if (i >= read_pipe->write_offset)
-        {
+        {   
             is_more_data = read_pipe->overflow_flag;
         }
+        if (!is_more_data) break;
+
+        GLOBAL_PIPE_READ_BUFFER[j++] = data[i++];
 
         if (i >= PIPE_BUFFER_SIZE)
         {
@@ -58,6 +56,8 @@ int pipe_read(PipeBuffer *read_pipe)
             read_pipe->overflow_flag = 0;
         }
     }
+
+    read_pipe->read_offset = i;
 
     return j;
 }
