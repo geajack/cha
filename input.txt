@@ -1,1 +1,10 @@
-print "apples" | grep --line-buffered apples | print "::" + readline()
+set n = 0
+while n < 5
+{
+    print "hello"
+    set n = n + 1
+} | while true
+{
+    print readline()
+}
+print "done"

@@ -726,6 +726,7 @@ void run_program(ASTNode *program)
                 if (thread->parent)
                 {
                     thread->parent->n_pending_children -= 1;
+                    thread->parent = 0; // temporary measure, since currently we don't drop threads from the loop when they're done
                 }
                 continue;
             }
