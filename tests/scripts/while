@@ -1,0 +1,6 @@
+set n = 0
+while n < 10
+{
+    print "Hello, world!"
+    set n = n + 1
+}

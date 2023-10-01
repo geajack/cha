@@ -1,0 +1,10 @@
+#!/bin/bash
+
+result=$(./interpreter tests/scripts/while | wc -l)
+
+if [ $result == 10 ]
+then
+    exit 0
+fi
+
+exit 1

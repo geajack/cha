@@ -742,13 +742,25 @@ char input[1024 * 1024];
 
 int main(int argc, char **argv)
 {
-    FILE *file = fopen("input.txt", "r");
+    int do_interpret = 1;
+    char* filename = "input.txt";
+    for (int i = 1; i < argc; i++)
+    {
+        if (streq(argv[i], "-t"))
+        {
+            do_interpret = 0;
+        }
+        else
+        {
+            filename = argv[i];
+            break;
+        }
+    }
+
+    FILE *file = fopen(filename, "r");
     int input_length = fread(input, 1, sizeof(input), file);
     
     ASTNode *program = parse(input, input_length);
-
-    int do_interpret = 1;
-    if (argc > 1) if (argv[1][0] == 't') do_interpret = 0;
 
     if (do_interpret)
         run_program(program);
