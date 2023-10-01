@@ -10,6 +10,7 @@ struct PipeBuffer
     int read_offset;
     int overflow_flag;
     int n_unsent_bytes;
+    int closed;
 };
 
 typedef struct PipeBuffer PipeBuffer;
@@ -20,6 +21,11 @@ int n_pipes_in_use = 0;
 PipeBuffer *acquire_internal_pipe()
 {
     PipeBuffer *pipe = &pipe_buffers[n_pipes_in_use];
+    pipe->write_offset = 0;
+    pipe->read_offset = 0;
+    pipe->overflow_flag = 0;
+    pipe->n_unsent_bytes = 0;
+    pipe->closed = 0;
     n_pipes_in_use += 1;
     return pipe;
 }

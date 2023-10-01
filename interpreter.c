@@ -115,6 +115,13 @@ void set_symbol(char *name, Value *value)
 
 Value *readline(PipeBuffer *read_pipe)
 {
+    if (read_pipe->closed)
+    {
+        Value *value = alloc_value(VALUE_TYPE_BOOLEAN);
+        value->boolean_value = 0;
+        return value;
+    }
+
     char buffer[128];
     if (!pipe_read_line(read_pipe, buffer)) return 0;
 
@@ -670,6 +677,16 @@ void resume_execution(InterpreterThread *thread)
         {
             if (node == thread->root)
             {
+                if (thread->write_pipe)
+                {
+                    thread->write_pipe->closed = 1;
+                }
+
+                if (thread->read_pipe)
+                {
+                    thread->read_pipe->closed = 1;                
+                }
+
                 thread->finished = 1;
                 done = 1;
                 break;
@@ -702,20 +719,21 @@ void resume_execution(InterpreterThread *thread)
 
 void run_program(ASTNode *program)
 {
-    pipe_buffers[0].write_offset = 0;
-    pipe_buffers[0].read_offset = 0;
-    pipe_buffers[0].overflow_flag = 0;
-
     spawn_child_thread(0, program);
 
     int done = 0;
     while (!done)
     {
-        int executed_anything = 0;
+        int all_finished = 1;
         for (int i = 0; i < n_threads; i++)
         {
             InterpreterThread *thread = &thread_pool[i];
-            
+
+            if (!thread->finished)
+            {
+                all_finished = 0;
+            }
+
             if (thread->n_pending_children > 0)
             {
                 continue;
@@ -732,10 +750,9 @@ void run_program(ASTNode *program)
             }
 
             resume_execution(thread);
-            executed_anything = 1;
         }
 
-        if (!executed_anything) done = 1;
+        if (all_finished) done = 1;
     }
 }
 

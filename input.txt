@@ -3,8 +3,13 @@ while n < 5
 {
     print "hello"
     set n = n + 1
-} | while true
-{
-    print readline()
+} | {
+    set line = readline()
+    while line
+    {
+        print line
+        set line = readline()
+    }
 }
+
 print "done"
