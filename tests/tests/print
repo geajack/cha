@@ -1,9 +1,10 @@
-#!./interpreter
+#!./cha
 
-interpreter tests/scripts/print | set output = readline()
+./cha tests/scripts/print | set output = readline()
 
 if output == "Hello, world!"
 {
+    print "yes"
     exit 0
 }
 

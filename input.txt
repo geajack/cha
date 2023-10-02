@@ -1,8 +1,10 @@
-interpreter tests/scripts/print | set output = readline()
+#!./cha
+
+cha tests/scripts/print | set output = readline()
 
 if output == "Hello, world!"
 {
-    exit 0
+    exit 1
 }
 
-exit 1
+exit 0
