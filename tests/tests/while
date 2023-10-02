@@ -1,6 +1,6 @@
 #!./cha
 
-./cha tests/scripts/while | wc -l | set result = readline()
+./cha tests/scripts/while.cha | wc -l | set result = readline()
 
 if result == "10"
 {

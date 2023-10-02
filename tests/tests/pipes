@@ -1,6 +1,6 @@
 #!./cha
 
-./cha tests/scripts/pipes | set result = readline()
+./cha tests/scripts/pipes.cha | set result = readline()
 
 if result == "10" exit 0
 

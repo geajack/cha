@@ -1,6 +1,6 @@
 #!./cha
 
-./cha tests/scripts/print | set output = readline()
+./cha tests/scripts/print.cha | set output = readline()
 
 if output == "Hello, world!"
 {
