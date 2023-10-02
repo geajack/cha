@@ -16,6 +16,9 @@
             "externalConsole": false,
             "internalConsoleOptions": "neverOpen",
             "MIMode": "gdb",
+            "miDebuggerServerAddress": "localhost:8000",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "useExtendedRemote": true,
             "setupCommands": [
                 {
                     "description": "Enable pretty-printing for gdb",

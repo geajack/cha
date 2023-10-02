@@ -113,17 +113,51 @@ void set_symbol(char *name, Value *value)
     if (i == n_symbols) n_symbols += 1;
 }
 
-Value *readline(PipeBuffer *read_pipe)
+Value *readline(InterpreterThread *thread)
 {
-    if (read_pipe->closed)
-    {
-        Value *value = alloc_value(VALUE_TYPE_BOOLEAN);
-        value->boolean_value = 0;
-        return value;
-    }
-
     char buffer[128];
-    if (!pipe_read_line(read_pipe, buffer)) return 0;
+    
+    if (thread->read_pipe)
+    {
+        PipeBuffer *read_pipe = thread->read_pipe;
+        if (read_pipe->closed)
+        {
+            Value *value = alloc_value(VALUE_TYPE_BOOLEAN);
+            value->boolean_value = 0;
+            return value;
+        }
+
+        if (!pipe_read_line(read_pipe, buffer)) return 0;
+    }
+    else
+    {
+        int i = 0;
+        while (1)
+        {
+            int success = read(STDIN_FILENO, &buffer[i], 1);
+            if (!success)
+            {
+                // printf("ERROR: Ran out of input reading a line from stdin (%s:%d)\n", __FILE__, __LINE__);
+                // out of input
+                buffer[i] = 0;
+                break;
+            }
+
+            if (buffer[i] == '\n')
+            {
+                buffer[i] = 0;
+                break;
+            }
+
+            i += 1;
+
+            if (i >= sizeof(buffer))
+            {
+                printf("ERROR: Buffer cannot hold line from stdin (%s:%d)\n", __FILE__, __LINE__);
+                break;
+            }
+        }
+    }
 
     Value *value = alloc_value(VALUE_TYPE_STRING);
     value->string_value = save_string_to_heap(buffer);
@@ -187,9 +221,13 @@ void thread_read_from_host(InterpreterThread *thread)
 
 void thread_write_to_host(InterpreterThread *thread)
 {
+    int n_read;
+    char *buffer;
+
     if (thread->read_pipe)
     {   
-        int n_read = pipe_read(thread->read_pipe);        
+        buffer = GLOBAL_PIPE_READ_BUFFER;
+        n_read = pipe_read(thread->read_pipe);        
 
         if (n_read == 0)
         {
@@ -199,19 +237,26 @@ void thread_write_to_host(InterpreterThread *thread)
                 return;
             }
         }
-
-        int n_written = write(thread->host_write, GLOBAL_PIPE_READ_BUFFER, n_read);
-
-        if (n_written < n_read)
-        {
-            // host error, shouldn't happen
-            printf("ERROR: Could not write to host process (%s:%d)\n", __FILE__, __LINE__);
-        }
     }
     else
     {
-        // not implemented yet
         // this is for if we're piping input right into the script from the command line
+        buffer = GLOBAL_HOST_READ_BUFFER;
+        n_read = read(STDIN_FILENO, GLOBAL_HOST_READ_BUFFER, GLOBAL_HOST_READ_BUFFER_SIZE);
+        // printf("%d\n", n_read);
+        if (n_read == 0)
+        {
+            close(thread->host_write);
+            return;
+        }
+    }
+
+    int n_written = write(thread->host_write, buffer, n_read);
+
+    if (n_written < n_read)
+    {
+        // host error, shouldn't happen
+        printf("ERROR: Could not write to host process (%s:%d)\n", __FILE__, __LINE__);
     }
 }
 
@@ -613,7 +658,7 @@ void resume_execution(InterpreterThread *thread)
             {
                 if (streq(current_node->name, "readline"))
                 {
-                    Value *value = readline(thread->read_pipe);
+                    Value *value = readline(thread);
                     if (value)
                     {
                         thread->returned_value = value;
