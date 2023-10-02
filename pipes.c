@@ -10,6 +10,7 @@ struct PipeBuffer
     int read_offset;
     int lap_flag;
     int n_unsent_bytes;
+    int n_writers;
     int closed;
 };
 
@@ -26,6 +27,7 @@ PipeBuffer *acquire_internal_pipe()
     pipe->lap_flag = 0;
     pipe->n_unsent_bytes = 0;
     pipe->closed = 0;
+    pipe->n_writers = 0;
     n_pipes_in_use += 1;
     return pipe;
 }

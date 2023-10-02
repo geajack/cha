@@ -1,3 +1,17 @@
+0: ROOT
+1: CODEBLOCK
+2: wc -l
+3: CODEBLOCK prints
+4: grep apple
+
+0: no pipes
+1: 0 -> 0x5198f0
+2: 0x5198f0 -> 0
+3: 0 -> 0x51a104
+4: 0x51a104 -> 0
+
+---
+
 get a node of the AST
 
 execute it

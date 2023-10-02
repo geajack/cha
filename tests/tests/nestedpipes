@@ -1,0 +1,6 @@
+#!./cha
+
+./cha tests/scripts/nestedpipes.cha | set result = readline()
+
+if result == "2" exit 0
+exit 1

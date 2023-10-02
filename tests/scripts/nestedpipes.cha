@@ -1,0 +1,7 @@
+{
+    {
+        print "apple sauce"
+        print "oranges"
+        print "apple pie"
+    } | grep apple
+} | wc -l

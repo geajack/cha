@@ -575,6 +575,7 @@ void resume_execution(InterpreterThread *thread)
                     PipeBuffer *pipe = acquire_internal_pipe();
                     left_thread->write_pipe = pipe;
                     right_thread->read_pipe = pipe;
+                    pipe->n_writers = 1;
                     
                     left_thread = right_thread;
                     chain = chain->first_child->next_sibling;
@@ -584,6 +585,13 @@ void resume_execution(InterpreterThread *thread)
                 PipeBuffer *pipe = acquire_internal_pipe();
                 left_thread->write_pipe = pipe;
                 right_thread->read_pipe = pipe;
+                pipe->n_writers = 1;
+
+                if (thread->write_pipe)
+                {
+                    right_thread->write_pipe = thread->write_pipe;
+                    thread->write_pipe->n_writers += 1;
+                }
                 
                 done = 1;
             }
@@ -743,9 +751,14 @@ void resume_execution(InterpreterThread *thread)
         {
             if (node == thread->root)
             {
+
                 if (thread->write_pipe)
                 {
-                    thread->write_pipe->closed = 1;
+                    thread->write_pipe->n_writers -= 1;
+                    if (thread->write_pipe->n_writers == 0)
+                    {
+                        thread->write_pipe->closed = 1;
+                    }
                 }
 
                 if (thread->read_pipe)
@@ -825,7 +838,7 @@ char input[1024 * 1024];
 int main(int argc, char **argv)
 {
     int do_interpret = 1;
-    char* filename = "input.txt";
+    char* filename = "input.cha";
     for (int i = 1; i < argc; i++)
     {
         int r = streq(argv[i], "-t");
