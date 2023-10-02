@@ -363,6 +363,7 @@ void resume_execution(InterpreterThread *thread)
             switch (current_node->type)
             {
                 case PRINT_NODE:
+                case EXIT_NODE:
                 case SET_NODE:
                 case IF_NODE:
                 case WHILE_NODE:
@@ -442,6 +443,11 @@ void resume_execution(InterpreterThread *thread)
                     do_pop_context = 1;
                     done = 1;
                 }
+            }
+            else if (current_node->type == EXIT_NODE)
+            {
+                Value *value = context->values[0];
+                exit(value->integer_value);
             }
             else if (current_node->type == SET_NODE)
             {

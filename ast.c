@@ -6,6 +6,7 @@ enum ASTNodeType
     PROGRAM_NODE,
     CODEBLOCK_NODE,
     PRINT_NODE,
+    EXIT_NODE,
     SET_NODE,
     IF_NODE,
     WHILE_NODE,
@@ -80,6 +81,10 @@ void print_ast_indented(ASTNode *tree, int indent)
 
         case PRINT_NODE:
             printf("PRINT");
+        break;
+
+        case EXIT_NODE:
+            printf("EXIT");
         break;
 
         case SET_NODE:

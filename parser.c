@@ -214,6 +214,16 @@ ASTNode *parser_consume_statement(Parser *parser)
             
             ast_attach_child(statement, argument);
         }
+        else if(streq(text, "exit"))
+        {
+            // print statement
+            statement = alloc_ast_node(EXIT_NODE);
+
+            lexer_next_token(parser->lexer, 0);
+            ASTNode *argument = parser_consume_expression(parser, OP_PRECEDENCE_NONE);
+            
+            ast_attach_child(statement, argument);
+        }
         else if (streq(text, "set"))
         {
             // set statement

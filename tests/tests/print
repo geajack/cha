@@ -1,9 +1,10 @@
-#!/bin/bash
-result=$(./interpreter tests/scripts/print)
+#!./interpreter
 
-if [[ $result == "Hello, world!" ]]
-then
+interpreter tests/scripts/print | set output = readline()
+
+if output == "Hello, world!"
+{
     exit 0
-fi
+}
 
 exit 1
