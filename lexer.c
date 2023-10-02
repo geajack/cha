@@ -311,6 +311,7 @@ int lexer_next_token(Lexer *lexer, int shell_mode)
                     LexerChar c = lexer_peek(lexer);
                     if (c == '=')
                     {
+                        lexer_consume(lexer);
                         token->type = TOKEN_TYPE_OPEQUALS;
                     }
                     else

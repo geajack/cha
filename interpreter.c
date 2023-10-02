@@ -680,6 +680,36 @@ void resume_execution(InterpreterThread *thread)
 
                 thread->returned_value = result;
             }
+            else if (current_node->type == EQUALS_NODE)
+            {
+                Value *left = context->values[0];
+                Value *right = context->values[1];
+
+                Value *result;
+                result = alloc_value(VALUE_TYPE_BOOLEAN);
+
+                if (left->type == VALUE_TYPE_STRING && right->type == VALUE_TYPE_STRING)
+                {
+                    int comparison = streq(left->string_value, right->string_value);
+                    result->boolean_value = comparison;
+                }
+                else if (left->type == VALUE_TYPE_NUMBER && right->type == VALUE_TYPE_NUMBER)
+                {
+                    int comparison = left->integer_value == right->integer_value;
+                    result->boolean_value = comparison;
+                }
+                else if (left->type == VALUE_TYPE_BOOLEAN && right->type == VALUE_TYPE_BOOLEAN)
+                {
+                    int comparison = left->boolean_value == right->boolean_value;
+                    result->boolean_value = comparison;
+                }
+                else
+                {
+                    result->boolean_value = 0;
+                }
+
+                thread->returned_value = result;
+            }
             else
             {
                 printf("ERROR: Unimplemented AST node (%s:%d)\n", __FILE__, __LINE__);
@@ -792,6 +822,7 @@ int main(int argc, char **argv)
     char* filename = "input.txt";
     for (int i = 1; i < argc; i++)
     {
+        int r = streq(argv[i], "-t");
         if (streq(argv[i], "-t"))
         {
             do_interpret = 0;
@@ -804,6 +835,12 @@ int main(int argc, char **argv)
     }
 
     FILE *file = fopen(filename, "r");
+    if (!file)
+    {
+        printf("File not found: %s\n", filename);
+        return 1;
+    }
+
     int input_length = fread(input, 1, sizeof(input), file);
     
     ASTNode *program = parse(input, input_length);
