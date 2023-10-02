@@ -1,0 +1,7 @@
+#!./cha
+
+./cha tests/scripts/pipes | set result = readline()
+
+if result == "10" exit 0
+
+exit 1

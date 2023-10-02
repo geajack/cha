@@ -1,0 +1,7 @@
+set n = 0
+while n < 10
+{
+    print "apples"
+    print "oranges"
+    set n = n + 1
+} | grep apples | wc -l
