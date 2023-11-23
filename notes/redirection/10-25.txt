@@ -1,0 +1,119 @@
+Goals:
+
+- (GFS) General fallback syntax for handling arbitrary I/O graphs
+- (FIO) Pipelining syntax: file I/O
+- (DUMP) Pipelining syntax: dead-ends, dump to file
+- (TEE) Pipelining syntax: tees
+- (REST) Piping to "rest"
+- (INTER) Interactivity
+- (KILL) Ending async tasks
+- (MEMF) In-memory files
+- (ASYNC) asynchronous execution, in particular does a code block wait for child processes to exit?
+
+For GFS, the idea is pretty simple. Nodes in the graph are codeblocks. A node needs to be able to declare its name as a node (really referring to its stdin), and the destinations of two edges: its stdout and stderr streams. So the syntax will be equivalent to:
+
+    {
+        pipe stdin = my_input
+        pipe stdout = my_output
+        pipe stderr = my_error
+
+        prog1
+    }
+
+You can then use these names to connect up other blocks.
+
+What happens if you have several things in the same block?
+
+    {
+        pipe stdout = my_output
+        prog1
+
+        pipe stdout = other_output
+        prog2
+    }
+
+I think this should just be evaluated "imperatively", as it would be for envvars:
+
+    {
+        env CONFIGPATH = "./config"
+        prog1
+
+        env CONFIGPATH = "./otherconfig"
+        prog2
+    }
+
+Same semantics. You should be able to use this to solve (REST) too:
+
+    async {
+        pipe stdout = prog_output
+        prog1
+    }
+
+    pipe stdin = prog_output
+    prog2
+
+So prog1 sends its output to the prog_output pipe but gets its input from the ambient stdin, while prog2 gets its input from prog_output and outputs to ambient stdout. Note that we need the first codeblock because as of right now I don't have a syntax for reverting stdout back to the ambient stdout.
+
+One HUGE problem with this GFS is that it can't specify sending a stream to multiple nodes, which means really this is not a solution for GFS at all. If we do something like
+
+{
+    pipe stdout = out1
+    pipe stdout = out2
+    prog1
+}
+
+Then according to what I said, this should send ONLY to out2. Abstractly, we have a couple of options for syntax. One is a CONNECT_PIPE(pipe1, pipe2) operator like the above. You put multiple of them in a row to connect pipe1 to multiple pipes. But this raises the issue of what should happen if there are multiple such statements in a codeblock *separated* by program invocations. Do they overwrite eachother? Or do they call get "hoisted" to the top of the codeblock? Both options are confusing.
+
+Another option is a CONNECT_PIPE(pipe1; pipe2, pipe3, ...) variadic  operator, maybe like
+
+    pipe stdout = out1, out2
+
+This is weird since we have to introduce special syntax (like a comma) just for this.
+
+Let's think carefully about the semantics we want here. We have to distinguish two things:
+
+    1. *Make* stdout be this pipe. Stop sending output to the ambient stdout.
+    2. Send output to this new pipe *as well as to* the ambient stdout, or wherever it was going before.
+
+When we think about listing multiple destinations:
+
+    pipe stdout -> out1
+    pipe stdout -> out2
+
+the first line means (1) and the second means (2).
+
+One constraint we have to deal with is that all of the readers of a program's output have to be specified before that program's invocation.
+
+(1) is basically "set stdout to this pipe". (2) is more like "register another reader for this pipe". You are basically creating a fifo and registering readers on it. The one thing I don't like about this is that it seems far from the mental model of somebody who just wants to glue programs together and hasn't thought deeply about this stuff.
+
+See, we could just have an operator that adds a destination to a stream, like:
+
+    pipe stdout -> out1
+    pipe stdout -> out2
+    prog1
+
+We could have a rule that says if there's at least one pipe command in a codeblock, that overrides the default, so this means stdout won't go to the ambient stdout anymore. But what if you *want* to keep sending things to ambient stdout? There could be a special variable to refer to the ambient stdout and stderr pipes. So the semantics would be that if there's at least one pipe command, that output stream is captured. All redirects apply only to this codeblock. Redirects cannot be revoked within a codeblock. Redirects apply only to commands that follow them.
+
+What should happen when we alternate pipes and programs?
+
+    async {
+        pipe pipe1 -> stdin
+        prog3
+    }
+
+    {
+        pipe stdout -> pipe1
+        async prog1
+
+        pipe stdout -> pipe2
+        prog2
+    }
+
+Should prog3 receive the output of prog2? prog3 will initially hang since there's nothing in its input. Once prog1 starts running it will begin writing to pipe1 and prog3 will be woken up to process it. Basically when we run prog1, we just know that prog1's output should go to a buffer with one reader on it, that being pipe1. What's weird is what happens to the output of prog2. If the prog1 invocation weren't there, this would mean "write prog2's output to one buffer that has two readers". But should that be the case now?
+
+Also, something else. If I write
+
+    pipe stdout -> pipe1
+    pipe stderr -> pipe1
+
+then stdout and stderr should be being written to the same buffer.

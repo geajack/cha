@@ -1,0 +1,256 @@
+Redirection operators:
+
+- pipe stdout: prog1 | prog2
+- pipe stderr: prog1 !| prog2
+- to pipe both, use both operators: prog1 | !| prog2
+- dump to file: prog1 -> somefile
+- dump stderr: prog1 !-> somefile
+- dump both: prog1 -> !-> somefile
+- append to file: prog1 ->> somefile
+                  prog1 !->> somefile
+
+These operators admittedly get a little gnarly and it might be hard to remember the complicated ones, but I don't think it's going to get much better than this, if you want to be able to express pipelines tersely and in a way that doesn't involve a lot of keywords (which would be weird because they'd look like arguments).
+
+Pipeline rules:
+- The left hand side of a pipe operator is the closest statement (host program invocation or script statement) to its left.
+- The right hand side of a pipe operator is the next statement to its right and must be a statement, not a file reference.
+- The left hand side of a dump operator is the closest statement to its left.
+- The right hand side of a dump operator is the next thing to its right and must be a file reference.
+
+This allows us to do relatively complicated chains:
+
+prog1 !-> /dev/null | prog2
+
+should we allow "teeing" a stream? like: prog1 -> log | prog2 to both send to a log and to a process? I don't see why not
+
+Should we allow input from files? Probably, but it should have very max priority:
+prog1 <- input -> output !| /dev/null | prog2
+so the file "input" goes to prog1. What if we get a situation where a program has both a file input and a pipe input? like:
+
+prog1 | prog2 <- moreinput
+
+The semantics of exactly in what order prog2 should get the input are unclear, so probably it should just reject this. It seems much more likely that a situation like this would be because a user thought the <- operator would apply to the whole pipeline (so prog1 would get the input from the file) than because they wanted to send two input streams to prog2. Alternatively, maybe this is a good argument for requiring an input dump operator at the end of a chain, not in the middle - and then something like this:
+
+prog1 <- input | prog2
+
+would be an error.
+
+An alternative would be to have extra keywords in the language: read, write, and append. Basically this is jut cat as a builtin, which is what file dump operators in bash are anyway. So we would do:
+
+read inputfile | prog1 | prog2 | write outputfile
+
+The only issue is that this doesn't allow teeing or sending stderr one way but stdout another quite as easily, since that would become:
+
+prog1 !| write /dev/null | prog2
+
+how do we know the pipe to prog2 has prog1 as its input? we coud just declare a rule that says that the write operator has no stdout and is "ignored" by pipes. But it doesn't pop out visually as much, and what about:
+
+prog1 !| {
+    # complicated analysis/formatting stuff
+    print final_result | write error.log
+} | prog2
+
+In a way, that codeblock just writes to a file. But the language can't tell it doesn't also produce output. You could maybe have a way of declaring a codeblock as not producing output, either with a configuration command or maybe with a special syntax like square brackets for the codeblock, but both of those seem ugly to me.
+
+Alternatively, you could have a special "tee" operator, like an ampersand. Stick that in front of a pipe to split the pipe. So now we would have
+
+prog1 &!| write /dev/null | prog2
+
+That's actually kind of cool. You could make it so the tee and error operators can be put in either order, so they're kind of like orthogonal "attributes" on the pipe operator, i.e. &!| and !&| both work.
+
+To be clear, the semantics are that the process to the right of the tee operator is considered to produce no output (its output and stderr just go to the ambient output pipes), and so the next pipe after it ignores it and gets its input from prog1.
+
+So now we have one redirection operator, the pipe, and two pipe modifiers: ! and &.
+
+Now, this does introduce one problem: what happens if we put together e teed pipe and a straight pipe? Like prog1 &!| | prog2 | prog3
+
+Maybe the simplest solution is just to ditch the double-operator idea and just have these operators:
+
+- | pipe stdout
+- !| pipe stderr
+- || pipe both
+- &| tee stdout
+- &!| or !&| tee stderr
+- |&| &|| tee both (kinda weird looking)
+
+and maybe, to preserve the idea that the tee and origin modifiers can be applied in either order, we could have ? represent "both stderr and stdout", so we'd have |, !| and ?|.
+
+It would be good if you could chain together arbitrarily many tees, like
+
+prog1 &| write file1 &| write file2 &| write file3 | write file4
+
+---
+
+For more complicated arrangements, you can declare where the stdout and stderr of a code block are going by a command like
+
+pipe stdout = pipe1
+
+or
+
+pipe stderr = pipe1
+
+this declares a new pipe if the identifier pipe1 hasn't been used yet, and directs the stdout or stderr of the block to there. 
+
+What if you want the output of prog1 to go to two different targets? You can do this of course:
+
+prog1 &| prog2 | prog3
+
+But this isn't very flexible, for example we can't pipe the output of prog2 anywhere (at least not conveniently). How can we do this with pipe commands?
+
+{
+    pipe stdout = pipe1
+    prog1
+}
+
+If now we do pipe pipe1 | prog2, that will consume the pipe. Maybe you have to use tees? Like
+
+pipe pipe1 &| prog2
+
+But that will make it so the output of prog2 can't be sent anywhere else. Maybe a pipe can only have one reader, and you just have to send the output of a process to two pipes:
+
+{
+    pipe stdout -> pipe1
+    pipe stdout -> pipe2
+    prog1
+}
+
+pipe pipe1 | prog2
+
+pipe pipe2 | prog3
+
+Maybe a "pipe" is just something that has an input and an output, and you can use it just like any process, so you would do something like
+
+{
+    pipe stdout | pipe pipe1
+    pipe stdout | pipe pipe2
+    prog1
+}
+
+But this doesn't make sense, because obviously stdout has two readers now, so the first one should consume its output.
+
+Since the tee operator lets you duplicate output to go to two places, you could certainly imagine something like
+
+pipe stdout &| pipe pipe1 &| pipe pipe2
+
+and then later you could do what you like with pipe1 and pipe2.
+
+The one thing that's a tiny bit weird is that the ! modifier is useless here since we're specifying stdout. So maybe it would be better to have a way to refer to "both output pipes of the current process", like
+
+pipe this &| pipe this_out &!| pipe this_err
+
+and then you could use something similar to overwrite the input of the current code block:
+
+prog1 ?| pipe this
+
+---
+
+{
+    pipe pipe1 = stdout
+    pipe pipe2 = stdout
+    prog1
+}
+
+pipe pipe1 | prog2
+
+pipe pipe2 | prog3
+
+---
+
+{
+    --  | pipe out1
+    -- !| pipe err1
+    prog1
+}
+
+pipe out1 | prog2
+
+---
+
+async prog1 | --
+
+
+async prog2 | --
+
+---
+
+async { prog1 | write buffer.txt }
+
+while condition
+{
+    read buffer.txt | prog2
+}
+
+---
+
+You need a way to close a pipe. If we're going to accept that a pipe can have multiple readers, it needs to be possible to close it so data doesn't just accumulate in it forever.
+
+{
+    pipe pipe1 = stdout
+    prog1
+}
+
+pipe pipe1 | prog2 # how do we close the pipe immediately?
+
+---
+
+pipe pipe1 |+ prog2 |+ prog3 | prog4
+
+---
+
+For the fallback system, all we really need is a way to specify nodes and edges.
+
+async {
+    stdout = pipe1
+    stderr = pipe1
+    prog1
+}
+
+{
+    stdin = pipe1
+    prog2
+}
+
+Each codeblock is a node. It declares the name of that node (effectively) by specifying what its stdin is. It says where its edges are going by specfying where stdout and stderr go.
+
+We could reuse this to implement the "pipe to rest" feature. So if we want to run prog1 async and have its output be the input stream to the rest of the script:
+
+{
+    stdout = pipe1
+    async prog1
+}
+
+stdin = pipe1
+
+One problem with this is it's a little too verbose, so maybe something like
+
+async prog1 | pipe pipe1
+stdin = pipe1
+
+It should probably also be possible to pipe OUT of a pipe:
+
+pipe pipe1 | prog1
+
+People will just have to get used to the fact that piping the stderr of a pipe is meaningless.
+
+One problem with this is that if we stick with our usual semantics, this should mean that just writing "pipe pipe1" on its own should dump the contents of that pipe to stdout.
+
+So we need:
+
+1. A way to set a pipe to be the stdout, stderr, or stdin of a code block.
+2. A command to read the output of a pipe (like cat for pipes)
+3. A command to write its input to a pipe (like the writefile command for pipes)
+
+Maybe just
+
+{
+    -- | writepipe output_pipe
+    -- !| writepipe error_pipe
+    readpipe input_pipe | --
+    prog1
+}
+
+Well, if we have the ability to introduce tees and what not, we can actually configure a program with just pipelines:
+
+readpipe input_pipe | prog1 +!| writepipe error_pipe | writepipe output_pipe
+
+It's just a little unreadable because of how the actual program name is buried in there.

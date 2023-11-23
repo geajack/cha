@@ -1,3 +1,13 @@
+For embedding arguments, we could have:
+
+$variablename
+$(expression) (value becomes argument)
+${code block} (stdout becomes argument)
+
+This seems like it would parse easily and be unambiguous. I thought I needed to restrict myself to only embedding variable names to avoid bash craziness, but actually I think the reason bash arguments are so bad is because bash is bad in many other ways.
+
+---
+
 0: ROOT
 1: CODEBLOCK
 2: wc -l
