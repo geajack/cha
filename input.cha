@@ -1,1 +1,4 @@
-echo hello | cat
+print false or false
+print false or true
+print true or false
+print true or true

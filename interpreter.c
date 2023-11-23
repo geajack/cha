@@ -419,6 +419,7 @@ void resume_execution(InterpreterThread *thread)
                 case MULTIPLY_NODE:
                 case LESSTHAN_NODE:
                 case EQUALS_NODE:
+                case OR_NODE:
                 n_required_values = 2;
                 break;
                 
@@ -744,8 +745,7 @@ void resume_execution(InterpreterThread *thread)
                 Value *left = context->values[0];
                 Value *right = context->values[1];
 
-                Value *result;
-                result = alloc_value(VALUE_TYPE_BOOLEAN);
+                Value *result = alloc_value(VALUE_TYPE_BOOLEAN);
 
                 if (left->type == VALUE_TYPE_STRING && right->type == VALUE_TYPE_STRING)
                 {
@@ -766,6 +766,17 @@ void resume_execution(InterpreterThread *thread)
                 {
                     result->boolean_value = 0;
                 }
+
+                thread->returned_value = result;
+            }
+            else if (current_node->type == OR_NODE)
+            {
+                Value *left = context->values[0];
+                Value *right = context->values[1];
+
+                Value *result = alloc_value(VALUE_TYPE_BOOLEAN);
+
+                result->boolean_value = is_truthy(left) || is_truthy(right);
 
                 thread->returned_value = result;
             }
@@ -886,7 +897,6 @@ int main(int argc, char **argv)
     char* filename = "input.cha";
     for (int i = 1; i < argc; i++)
     {
-        int r = streq(argv[i], "-t");
         if (streq(argv[i], "-t"))
         {
             do_interpret = 0;

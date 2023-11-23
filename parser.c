@@ -36,9 +36,10 @@ struct Parser
 typedef struct Parser Parser;
 
 int OP_PRECEDENCE_NONE = 0;
-int OP_PRECEDENCE_COMPARISON = 1;
-int OP_PRECEDENCE_ADD = 2;
-int OP_PRECEDENCE_MULTIPLY = 3;
+int OP_PRECEDENCE_OR = 1;
+int OP_PRECEDENCE_COMPARISON = 2;
+int OP_PRECEDENCE_ADD = 3;
+int OP_PRECEDENCE_MULTIPLY = 4;
 
 ASTNode *parser_consume_expression(Parser *parser, int precedence)
 {
@@ -129,40 +130,47 @@ ASTNode *parser_consume_expression(Parser *parser, int precedence)
         }
         else
         {
-            int token_is_operator = TOKEN_TYPESET_OP_FIRST < token_type && token_type < TOKEN_TYPESET_OP_LAST;
-            
+            int token_is_operator = 0;
             int this_precedence;
-            if (token_type == TOKEN_TYPE_OPADD) this_precedence = OP_PRECEDENCE_ADD;
-            else if (token_type == TOKEN_TYPE_OPMULTIPLY) this_precedence = OP_PRECEDENCE_MULTIPLY;
-            else if (token_type == TOKEN_TYPE_OPLESSTHAN) this_precedence = OP_PRECEDENCE_COMPARISON;
-            else if (token_type == TOKEN_TYPE_OPEQUALS) this_precedence = OP_PRECEDENCE_COMPARISON;
+            enum ASTNodeType operator_node_type;
+            if (TOKEN_TYPESET_OP_FIRST < token_type && token_type < TOKEN_TYPESET_OP_LAST)
+            {
+                token_is_operator = 1;
+                if (token_type == TOKEN_TYPE_OPADD)
+                {
+                    this_precedence = OP_PRECEDENCE_ADD;
+                    operator_node_type = ADD_NODE;
+                }
+                else if (token_type == TOKEN_TYPE_OPMULTIPLY)
+                {
+                    this_precedence = OP_PRECEDENCE_MULTIPLY;
+                    operator_node_type = MULTIPLY_NODE;
+                }
+                else if (token_type == TOKEN_TYPE_OPLESSTHAN)
+                {
+                    this_precedence = OP_PRECEDENCE_COMPARISON;
+                    operator_node_type = LESSTHAN_NODE;
+                }
+                else if (token_type == TOKEN_TYPE_OPEQUALS)
+                {
+                    this_precedence = OP_PRECEDENCE_COMPARISON;
+                    operator_node_type = EQUALS_NODE;
+                }
+            }
+            else if (token_type == TOKEN_TYPE_NAME)
+            {
+                if (streq(token->text, "or"))
+                {
+                    token_is_operator = 1;
+                    this_precedence = OP_PRECEDENCE_OR;
+                    operator_node_type = OR_NODE;
+                }
+            }
 
             if (token_is_operator && precedence <= this_precedence)
             {
                 lexer_next_token(parser->lexer, 0); // consume operator
                 ASTNode *rhs = parser_consume_expression(parser, this_precedence);
-                
-                enum ASTNodeType operator_node_type;
-                if (token_type == TOKEN_TYPE_OPADD)
-                {
-                    operator_node_type = ADD_NODE;
-                }
-                else if (token_type == TOKEN_TYPE_OPMULTIPLY)
-                {
-                    operator_node_type = MULTIPLY_NODE;
-                }
-                else if (token_type == TOKEN_TYPE_OPLESSTHAN)
-                {
-                    operator_node_type = LESSTHAN_NODE;
-                }
-                else if (token_type == TOKEN_TYPE_OPEQUALS)
-                {
-                    operator_node_type = EQUALS_NODE;
-                }
-                else
-                {
-                    printf("PARSE ERROR: Unexpected operator (parser.c:%d)\n", __LINE__);
-                }
 
                 ASTNode *operation = alloc_ast_node(operator_node_type);                
                 ast_attach_child(operation, expression);
