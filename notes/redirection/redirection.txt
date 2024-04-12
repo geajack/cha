@@ -254,3 +254,19 @@ Well, if we have the ability to introduce tees and what not, we can actually con
 readpipe input_pipe | prog1 +!| writepipe error_pipe | writepipe output_pipe
 
 It's just a little unreadable because of how the actual program name is buried in there.
+
+---
+
+When you run any statement, it has to have a certain stdin, a certain stdout and a certain stderr. All of these are circular buffers which can have an arbitrary number of readers and writers. When the script starts, these are set to the ambient process stdin/out/err. But you can create new buffers and imperatively set them as the new buffers to use:
+
+async {
+    pipe in = pipe1
+    pipe out = pipe2
+    telnet
+}
+
+pipe in = pipe2
+
+print "hello" | pipe pipe1
+
+How would you make 

@@ -1,0 +1,127 @@
+You can declare buffer to which stdout and stderr should go, and a buffer from which stdin should be read, with a syntax something like:
+
+pipe stdout = pipe1
+pipe stdin = pipe2
+
+This will apply to all commands run after this point, until the end of the current code block.
+
+What happens if you have multiple readers? Will the data remain in the pipe until everyone has read it? I think the way actual Unix pipes work
+is that if a pipe has multiple readers, only one will get to read any given piece of data (they race to get the data).
+
+What if I want to send the output of one process to two other processes? Both of them should see *all* of the fisrt process's output:
+
+writeprog ---> prog1
+          ---> prog2
+
+If I express this something like
+
+async {
+    pipe stdout = pipe1
+    writeprog
+}
+
+pipe stdin = pipe1
+async prog1
+async prog2
+
+The problem is, prog1 will immediately start up and raed from pipe1, and then that data will be gone by the time prog2 starts (race condition). So what would need to happen is that the pipe holds all the data written to it even if all active readers have read from it - *just in case* another reader is attached later. But the problem is, this means in a long-running process all of that output has to be held in memory forever, because we can never be sure if another reader might get attached.
+
+One solution would be for data to remain in the pipe only until all readers *who were attached when the data was written* read it. So we would have to always attach readers before writers:
+
+    pipe stdin = pipe1
+    async prog1
+    async prog2
+
+    pipe stdout = pipe1
+    async writeprog
+
+This is kind of annoying because it forces us to write our code in a particular order. It would be a little less annoying if we could just declare a reader on a pipe without having to write the command that does the reading.
+
+You could maybe have generic plumbing commands:
+
+    pipe stuff to outlet1
+    pipe stuff to outlet2 # declares a buffer called stuff with two read pointers
+
+    {
+        pipe stdout to stuff
+        async writeprog
+    }
+
+    {
+        pipe outlet1 to stdin
+        async prog1
+
+        pipe outlet2 to stdin
+        async prog2
+    }
+
+So the pipe command deliberately confounds buffers and read pointers. You can also pipe a buffer directly, and it implicitly creates a new, anonymous read pointer:
+
+    {
+        pipe stuff to stdin
+        async prog1
+
+        pipe stuff to stdin
+        async prog2
+    }
+
+But this is weird, because we did the same thing twice. So the semantics should be that when we execute a command, if stdin has no explicit read buffer attached, we just make a new one. This raises another point, which is that by default when the program starts, stdin has no explicit read pointer attached.
+
+So the model we're converging on is that we have two concepts: buffers, and read pointers. A read pointer is always associated with a buffer, and a buffer can have arbitrarily many read pointers. At any given moment:
+
+- stdin, stdout and stderr are all mapped to specific buffers
+- stdin is mapped to a buffer and *optionally* a read pointer on that buffer
+
+When a command is run, its stdout and stderr are mapped to the current buffers for those streams. Its stdin is mapped to the current buffer for that stream. If a read pointer is assigned for stdin, it uses that read pointer, but otherwise, a new anonymous read pointer is implicitly created at the start of the buffer.
+
+The most brute force kind of syntax is to just have commands like this:
+
+    pipe stdout to <buffer>
+    pipe stderr to <buffer>
+    pipe <buffer> to stdin as <pointer> # if as clause is not specified, create new anonymous pointer
+    declare <pointer> on <buffer>
+
+Then you could type
+
+    {
+        pipe buffer to stdin
+        async prog1
+        async prog2
+    }
+
+    pipe stdout to buffer
+    async writeprog
+
+or
+
+    declare p1 on buffer
+    declare p2 on buffer
+
+    {
+        pipe stdout to buffer
+        async writeprog
+    }
+
+    pipe p1 to stdin
+    async prog1
+
+    pipe p2 to stdin
+    async prog2
+
+---
+
+Another solution would be to force the use of multiple buffers, so a buffer can basically only have one reader (or rather, all readers to a buffer race to clear its data). Then you would need to declare that the output of a process should be sent to multiple buffers, something like this:
+
+{
+    pipe stdout to pipe1
+    pipe stdout to pipe2
+    async writeprog
+}
+
+pipe stdin = pipe1
+async prog1
+
+pipe stdin = pipe2
+async prog2
+
+The problem with this is that now you can't have a dynamic number of readers on a pipe, like a bunch of processes spawned in a loop. It's also inefficient that you're duplicating the data unnecessarily, but maybe that doesn't have to be the implementation.
